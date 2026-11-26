@@ -1,17 +1,19 @@
 'use client'
 
 import { useState } from 'react'
-import { BarChart3, BellRing, ChefHat, Clock3, Download, LayoutGrid, QrCode, Utensils } from 'lucide-react'
+import { BarChart3, BellRing, ChefHat, Clock3, Download, LayoutGrid, QrCode, Truck, UsersRound, Utensils } from 'lucide-react'
+import DeliveryWorkspace from './delivery-workspace'
+import { roles } from '../lib/roles'
 import { menu } from '../lib/menu'
 import { orderSubtotal, paidTotal, parisDay, serviceReasons, tableBalance, tipTotal } from '../lib/operations'
 
 const views = [
-  ['floor','Floor',LayoutGrid], ['kitchen','Kitchen',ChefHat], ['catalog','Menu',Utensils], ['reports','Reports',BarChart3],
+  ['floor','Floor',LayoutGrid], ['reception','Reception',UsersRound], ['kitchen','Kitchen',ChefHat], ['dispatch','Delivery',Truck], ['catalog','Menu',Utensils], ['reports','Reports',BarChart3],
 ]
 const stages = ['Placed','Cooking','Ready']
 const activeOrder = order => stages.includes(order.status)
 const pendingCalls = table => table.calls.filter(call => !call.resolved)
-const occupied = table => table.orders.length > 0 || pendingCalls(table).length > 0
+const occupied = table => Boolean(table.seating) || table.orders.length > 0 || pendingCalls(table).length > 0
 const tableName = id => 'Table ' + id.padStart(2, '0')
 const elapsed = (start, now) => Math.max(0, Math.floor((now - start) / 1000))
 const timeLabel = (start, now) => {
@@ -36,14 +38,15 @@ function exportVisits(visits) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function OrderTicket({order, table, now, busy, perform, money, compact, payments}) {
+function OrderTicket({order, table, now, busy, perform, money, compact, payments, role}) {
   const late = order.status === 'Cooking' && elapsed(order.updatedAt, now) > 12 * 60
+  const canAdvance = activeOrder(order) && (role === 'manager' || (role === 'kitchen' ? order.status !== 'Ready' : order.status !== 'Cooking'))
   return <article className={'ticket' + (late ? ' ticket-late' : '')}>
     <header><strong>{compact ? order.status : tableName(table)}</strong><span><Clock3 size={14}/> {timeLabel(order.updatedAt, now)}</span></header>
     <ul>{order.items.map(item => <li key={item.id}><b>{item.quantity}×</b> {item.name}</li>)}</ul>
     {order.note && <p className="ticket-note">{order.note}</p>}
     <footer><strong>{money(orderSubtotal(order))}</strong>
-      {activeOrder(order) && <button className="primary" disabled={busy} onClick={() => perform({action:'status',orderId:order.id,status:next[order.status]}, 'Order updated.', table)}>{labels[order.status]}</button>}
+      {canAdvance && <button className="primary" disabled={busy} onClick={() => perform({action:'status',orderId:order.id,status:next[order.status]}, 'Order updated.', table)}>{labels[order.status]}</button>}
     </footer>
     {compact && order.status === 'Placed' && payments.length === 0 && <button className="text-danger" disabled={busy} onClick={() => {
       if (window.confirm('Cancel this order before it reaches the kitchen?')) perform({action:'status',orderId:order.id,status:'Cancelled'}, 'Order cancelled.', table)
@@ -51,7 +54,7 @@ function OrderTicket({order, table, now, busy, perform, money, compact, payments
   </article>
 }
 
-export default function StaffWorkspace({view,setView,tables,now,busy,perform,money,showQr,openPayment,signOut,unavailable,toggleDish,demo}) {
+export default function StaffWorkspace({view,setView,tables,now,busy,perform,money,showQr,openPayment,signOut,unavailable,toggleDish,demo,account,live,openSeating,deliveryOrders,drivers,performDelivery,notify}) {
   const [filter,setFilter] = useState('All tables')
   const [reportDay,setReportDay] = useState('')
   const active = tables.filter(occupied)
@@ -74,9 +77,9 @@ export default function StaffWorkspace({view,setView,tables,now,busy,perform,mon
     (filter === 'Requests' && pendingCalls(table).length) || (filter === 'Unpaid' && tableBalance(table) > 0))
 
   return <section className="workspace">
-    <header className="workspace-head"><div><p>RESTAURANT OPERATIONS</p><h1>Service dashboard</h1></div><span className="live-indicator">{demo ? 'Demo service' : 'Live service'}</span></header>
+    <header className="workspace-head"><div><p>{roles[account.role].label} · {account.username}</p><h1>Service dashboard</h1></div><span className="live-indicator">{demo ? 'Demo · ' : ''}{live ? 'Socket connected' : 'Syncing by refresh'}</span></header>
     <nav className="workspace-nav" aria-label="Staff views">
-      {views.map(([id,label,Icon]) => <button key={id} className={view === id ? 'is-current' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => setView(id)}><Icon size={18}/>{label}</button>)}
+      {views.filter(([id]) => roles[account.role].views.includes(id)).map(([id,label,Icon]) => <button key={id} className={view === id ? 'is-current' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => setView(id)}><Icon size={18}/>{label}</button>)}
       <button className="logout" onClick={signOut}>Sign out</button>
     </nav>
     {view === 'floor' && <>
@@ -91,22 +94,32 @@ export default function StaffWorkspace({view,setView,tables,now,busy,perform,mon
         {filtered.map(table => <article className="staff-card expanded-table" key={table._id}>
           <div className="staff-card-head"><div><h3>{tableName(table._id)}</h3><span className={'state-label ' + (occupied(table) ? 'occupied' : '')}>{occupied(table) ? 'In service' : 'Available'}</span></div><button className="icon-button" aria-label={'QR code for ' + tableName(table._id)} onClick={() => showQr(table._id)}><QrCode size={19}/></button></div>
           {pendingCalls(table).map(call => <div className="service-alert" key={call.id}><span><BellRing size={16}/> {serviceReasons[call.reason] || serviceReasons.help}</span><button disabled={busy} onClick={() => perform({action:'resolve',callId:call.id}, 'Request resolved.', table._id)}>Resolve</button></div>)}
-          {table.orders.map(order => <OrderTicket key={order.id} {...{order,now,busy,perform,money}} compact table={table._id} payments={table.payments}/>)}
+          {table.orders.map(order => <OrderTicket key={order.id} {...{order,now,busy,perform,money}} compact role={account.role} table={table._id} payments={table.payments}/>)}
           {table.reviews?.map(review => <p key={review.id}>★ {review.rating}/5 {review.comment}</p>)}
           <div className="table-actions">
           {tableBalance(table) > 0 && <button className="primary" onClick={() => openPayment(table)}>Record {money(tableBalance(table))}</button>}
-          {tableBalance(table) === 0 && (table.orders.length > 0 || table.calls.length > 0) && !table.orders.some(activeOrder) && pendingCalls(table).length === 0 && <button onClick={() => perform({action:'close'}, 'Visit closed and added to reports.', table._id)} disabled={busy}>Close visit</button>}
+          {tableBalance(table) === 0 && (table.seating || table.orders.length > 0 || table.calls.length > 0) && !table.orders.some(activeOrder) && pendingCalls(table).length === 0 && <button onClick={() => perform({action:'close'}, 'Visit closed and added to reports.', table._id)} disabled={busy}>Close visit</button>}
           </div>
         </article>)}
         {filtered.length === 0 && <p className="empty-state">No tables match this filter.</p>}
       </div>
     </>}
+    {view === 'reception' && <>
+      <div className="workspace-title"><div><h2>Reception and seating</h2><p>Seat walk-ins, track covers, and give guests their table QR.</p></div></div>
+      <div className="metrics"><div><span>Available tables</span><strong>{tables.length-active.length}</strong></div><div><span>Seated parties</span><strong>{tables.filter(table => table.seating).length}</strong></div><div><span>Guests seated</span><strong>{tables.reduce((count,table) => count + (table.seating?.party || 0),0)}</strong></div></div>
+      <div className="floor">{tables.map(table => <article className="staff-card expanded-table" key={table._id}>
+        <div className="staff-card-head"><h3>{tableName(table._id)}</h3><button className="icon-button" aria-label={'QR code for ' + tableName(table._id)} onClick={() => showQr(table._id)}><QrCode size={19}/></button></div>
+        {table.seating && <p><strong>{table.seating.party} guests</strong>{table.seating.guestName && ' · ' + table.seating.guestName}</p>}
+        {occupied(table) ? <p className="muted">In service</p> : <button disabled={busy} className="primary" onClick={() => openSeating(table)}>Seat party</button>}
+      </article>)}</div>
+    </>}
+    {view === 'dispatch' && <DeliveryWorkspace role={account.role} orders={deliveryOrders} {...{drivers,money,busy,notify}} perform={performDelivery}/>}
     {view === 'kitchen' && <>
       <div className="workspace-title"><div><h2>Kitchen queue</h2><p>Orders are sorted oldest first. Cooking tickets are flagged after 12 minutes.</p></div></div>
       <div className="kanban">{stages.map(stage => {
         const tickets = orders.filter(({order}) => order.status === stage).sort((a,b) => a.order.updatedAt - b.order.updatedAt)
         return <section className="kanban-column" key={stage}><header><h3>{stage === 'Placed' ? 'New orders' : stage}</h3><span>{tickets.length}</span></header>
-          {tickets.map(({order,table}) => <OrderTicket key={order.id} {...{order,table,now,busy,perform,money}}/>)}
+          {tickets.map(({order,table}) => <OrderTicket key={order.id} {...{order,table,now,busy,perform,money}} role={account.role}/>)}
           {tickets.length === 0 && <p className="empty-state">No orders</p>}
         </section>
       })}</div>
