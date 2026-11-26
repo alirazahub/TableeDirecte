@@ -1,5 +1,9 @@
 export default {
   async rewrites() {
-    return [{ source: '/service/:path*', destination: (process.env.API_ORIGIN || 'http://127.0.0.1:4000') + '/:path*' }]
+    const origin = process.env.API_ORIGIN?.replace(/\/$/, '')
+    return [{source:'/service/:path*', destination:origin ? origin + '/:path*' : '/api/:path*'}]
+  },
+  async headers() {
+    return [{source:'/:path*', headers:[{key:'Referrer-Policy',value:'no-referrer'}]}]
   },
 }
