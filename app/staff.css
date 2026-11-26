@@ -187,3 +187,43 @@
 .modal .floor-editor-actions .secondary { margin-top: 0; }
 .modal .floor-overlap { color: #8c3023; background: #fae9e6; padding: 8px 9px; border-radius: 7px; }
 @media (max-width: 790px) { .floor-editor-grid { grid-template-columns: 1fr; } }
+
+.floor-map-canvas { min-width: 0; }
+.floor-map-table[data-shape="rounded"] { border-radius: 23%; }
+.floor-map-table[data-shape="custom"] { isolation: isolate; border-color: transparent; background: transparent; }
+.floor-map-table[data-shape="custom"]:not(:disabled):hover { background: transparent; border-color: transparent; }
+.floor-map-table[data-shape="custom"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--floor-color, #ece9ef);
+  clip-path: var(--table-outline, inset(0 round 8px));
+}
+.floor-map-table[data-overlap="true"] { outline: 2px solid #a02d20; outline-offset: -2px; }
+.floor-resize-handle {
+  position: absolute;
+  inset: auto 0 0 auto;
+  display: block;
+  width: 19px;
+  height: 19px;
+  background: #4b3bb2;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  cursor: nwse-resize;
+}
+.floor-editor-toolbar, .floor-map-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 6px 9px; margin-block: 8px; }
+.floor-editor-toolbar label, .floor-map-tools label { display: grid; gap: 3px; margin: 0; font-size: 13px; font-weight: 700; }
+.floor-editor-toolbar label input[type="number"] { width: 110px; }
+.floor-editor-toolbar label input[type="range"] { width: 115px; padding: 0; accent-color: #4b3bb2; }
+.floor-editor-toolbar .secondary { margin-top: 0; }
+.floor-map-tools select { max-width: 100%; padding: 6px 7px; border: 1px solid var(--line); border-radius: 7px; background: #fff; min-height: 33px; }
+.table-shape-editor { margin-top: 10px; min-width: 0; }
+.table-shape-editor > p { font-size: 13px; }
+.table-shape-editor svg { display: block; width: min(100%,185px); aspect-ratio: 1; margin-block: 7px; background: #f8f6fb; border: 1px solid #dfd9e9; border-radius: 8px; cursor: crosshair; touch-action: none; }
+.table-shape-editor polyline, .table-shape-editor polygon { fill: #e8e1f3; stroke: #4b3bb2; stroke-width: 1; }
+.table-shape-editor polyline { fill: none; }
+.table-shape-editor circle { fill: #4b3bb2; stroke: white; stroke-width: .7; cursor: grab; }
+.table-shape-editor details { font-size: 13px; }
+.table-shape-editor summary { cursor: pointer; font-weight: 600; }
+.table-shape-editor button { min-height: 32px; font-size: 13px; padding: 4px 7px; }
+.shape-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }

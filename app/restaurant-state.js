@@ -47,8 +47,27 @@ function reduceData(state, message) {
           table._id === message.table._id ? newer(table, message.table) : table,
         ),
       }
-    case 'floor-layout':
-      return { ...state, floorLayout: newer(state.floorLayout, message.layout) }
+    case 'floor-layout': {
+      const floorLayout = newer(state.floorLayout, message.layout)
+      if (floorLayout === state.floorLayout) return state
+      const tables = new Map(state.tables.map((table) => [table._id, table]))
+      return {
+        ...state,
+        floorLayout,
+        tables: floorLayout.positions.map(
+          ({ id }) =>
+            tables.get(id) || {
+              _id: id,
+              version: 0,
+              orders: [],
+              calls: [],
+              payments: [],
+              reviews: [],
+              history: [],
+            },
+        ),
+      }
+    }
     case 'menu':
       return Number.isInteger(message.version) && message.version < state.menuVersion
         ? state

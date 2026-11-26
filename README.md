@@ -100,6 +100,6 @@ The **Signature Burger Meal** is a guest example with a required side, drink, an
 
 ### Dining room map
 
-Managers can open **Floor plan → Design layout** to arrange the 12 dining tables. Drag a table or use the arrow keys and position fields, then set its label, shape, and seat count. Save publishes the layout to floor, reception, and kitchen staff over the existing WebSocket connection. Floor and reception staff can select a table to jump to its card. Kitchen staff can expand the map and select a table to filter its tickets.
+Managers can open **Floor plan → Design layout** to expand the room up to 64 columns by 48 rows and add up to 120 numbered tables. Drag a table to move it and drag its corner handle to resize it. Position and size fields are also available. Choose a rectangle, rounded rectangle, or oval, or use **Draw custom shape** to add up to 24 corners and move them before saving. Each table has a label and seat count. New tables get their own table card and downloadable QR code. Save publishes the layout to floor, reception, and kitchen staff over the existing WebSocket connection. Floor and reception staff can select a table to jump to its card. Kitchen staff can expand the map and select a table to filter its tickets.
 
-Layouts are stored in MongoDB independently of service records and QR links. A default grid is shown until the first save. Saved layouts reject overlap, out-of-bounds positions, and edits based on an older version.
+Layouts are stored in MongoDB independently of service records and QR links. A 12-table default grid is shown until the first save. Layouts saved before canvas resizing keep their original dimensions. Saved layouts reject overlap, out-of-bounds positions, and edits based on an older version.

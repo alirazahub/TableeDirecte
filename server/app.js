@@ -39,7 +39,7 @@ import {
   staffDeliveries,
   staffTable,
   staffTables,
-  tableIds,
+  tableExists,
   tableRoles,
 } from './store.js'
 import { readFloorLayout } from '../lib/floor-layout.js'
@@ -47,6 +47,7 @@ import { lineKey, quoteDish, readDish } from '../lib/catalog.js'
 import { tableBalance, subtotal, paidTotal, tipTotal, serviceReasons, parisDay } from '../lib/operations.js'
 
 const app = express()
+app.use('/floor-layout', express.json({ limit: '160kb' }))
 app.use(express.json({ limit: '24kb' }))
 app.use((req, res, next) => {
   res.set('Cache-Control', 'no-store')
@@ -193,17 +194,20 @@ app.get('/floor-layout', async (req, res) => {
 })
 app.post('/floor-layout', async (req, res) => {
   requireRole(req, ['manager'])
-  const { positions, version } = req.body || {}
-  let validated
-  try {
-    validated = readFloorLayout(positions)
-  } catch (error) {
-    throw problem(400, error.message)
-  }
+  const input = req.body || {}
   const updated = await update(floorLayoutId, (state) => {
-    if (state.version !== version)
+    if (state.version !== input.version)
       throw problem(409, 'Someone saved a newer floor layout. Reopen the editor to use it.')
-    state.positions = validated
+    let validated
+    try {
+      validated = readFloorLayout(
+        input,
+        floorProjection(state).positions.map((table) => table.id),
+      )
+    } catch (error) {
+      throw problem(400, error.message)
+    }
+    Object.assign(state, validated)
   })
   res.json(floorProjection(updated))
 })
@@ -249,8 +253,8 @@ app.post('/menu', async (req, res) => {
   })
   res.json(menuProjection(settings, manager))
 })
-app.param('id', (req, res, next, id) => {
-  if (!tableIds.includes(id)) return next(problem(404, 'Table not found.'))
+app.param('id', async (req, res, next, id) => {
+  if (!(await tableExists(id))) return next(problem(404, 'Table not found.'))
   if (!hasRole(req, tableRoles) && !canAccessTable(id, req.get('X-Table-Key')))
     return next(problem(403, 'Scan the QR code on your table to continue.'))
   next()

@@ -17,9 +17,10 @@ import {
   staffDeliveries,
   staffTable,
   staffTables,
-  tableIds,
+  tableExists,
   tableRoles,
 } from './store.js'
+import { isTableId } from '../lib/floor-layout.js'
 import { roles } from '../lib/roles.js'
 
 export const tableKey = (id) =>
@@ -29,9 +30,7 @@ export const tableKey = (id) =>
         .update(id)
         .digest('hex')
 export function canAccessTable(table, key) {
-  return (
-    tableIds.includes(table) && Boolean(demo || process.env.TABLE_KEY) && equal(key || '', tableKey(table))
-  )
+  return isTableId(table) && Boolean(demo || process.env.TABLE_KEY) && equal(key || '', tableKey(table))
 }
 
 function subscribe({ cookie, scope, send, terminate }) {
@@ -47,7 +46,9 @@ function subscribe({ cookie, scope, send, terminate }) {
     terminate(1008, 'Staff scope denied')
     return
   }
-  const guest = !scope.staff && canAccessTable(table, key)
+  const guestCandidate = !scope.staff && canAccessTable(table, key)
+  let guest = false
+  const visibleTables = new Set()
   const trackingId = !scope.staff && verifyTracking(tracking)
   const deliveryId = trackingId ? deliveryRecordId(trackingId) : ''
   const staffTableScope = Boolean(
@@ -66,12 +67,15 @@ function subscribe({ cookie, scope, send, terminate }) {
   let initialized = false
 
   function publish(id, record) {
-    if (staffTableScope && id === floorLayoutId)
-      send({ type: 'floor-layout', layout: floorProjection(record) })
+    if (staffTableScope && id === floorLayoutId) {
+      const layout = floorProjection(record)
+      for (const position of layout.positions) visibleTables.add(position.id)
+      send({ type: 'floor-layout', layout })
+    }
     if (id === 'menu-settings' && menuScope)
       send({ type: 'menu', ...menuProjection(record, account?.role === 'manager') })
     if (guest && id === table) send({ type: 'guest', table: guestData(record || empty(id)) })
-    if (staffTableScope && tableIds.includes(id))
+    if (staffTableScope && visibleTables.has(id))
       send({ type: 'table', table: staffTable(record || empty(id), account.role) })
     if (deliveryId === id) send({ type: 'tracking', order: record?.id ? deliveryPublic(record) : null })
     if (staffDeliveryScope && id.startsWith('delivery-')) {
@@ -111,17 +115,23 @@ function subscribe({ cookie, scope, send, terminate }) {
   }
 
   startChangeFeed()
-    .then(() =>
-      Promise.all([
+    .then(async () => {
+      const [layout, guestAllowed] = await Promise.all([
+        staffTableScope ? readFloor() : null,
+        guestCandidate ? tableExists(table) : false,
+      ])
+      guest = guestAllowed
+      for (const position of layout?.positions || []) visibleTables.add(position.id)
+      const [record, tables, deliveries, catalog, tracked] = await Promise.all([
         guest ? lookup(table) : null,
-        staffTableScope ? staffTables(account.role) : null,
+        layout ? staffTables(account.role, layout) : null,
         staffDeliveryScope ? staffDeliveries(account) : null,
         menuScope ? readMenu(account?.role === 'manager') : null,
-        staffTableScope ? readFloor() : null,
         deliveryId ? lookup(deliveryId) : null,
-      ]),
-    )
-    .then(([record, tables, deliveries, catalog, layout, tracked]) => {
+      ])
+      return { record, tables, deliveries, catalog, layout, tracked }
+    })
+    .then(({ record, tables, deliveries, catalog, layout, tracked }) => {
       if (closed) return
       for (const order of deliveries?.orders || []) visibleDeliveries.add(order.id)
       send({

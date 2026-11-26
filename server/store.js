@@ -1,7 +1,7 @@
 import { demo, drivers, identityConfigured } from './auth.js'
 import { database } from './changes.js'
 import { menu } from '../lib/menu.js'
-import { defaultFloorLayout, tableIds } from '../lib/floor-layout.js'
+import { defaultFloorLayout, floorColumns, floorRows, tableIds, isTableId } from '../lib/floor-layout.js'
 import { demoRecords } from './demo-data.js'
 
 export { tableIds }
@@ -41,11 +41,22 @@ export function menuProjection(record, manager = false) {
 
 export const floorLayoutId = 'floor-layout'
 export function floorProjection(record) {
-  return { positions: record?.positions || defaultFloorLayout(), version: record?.version || 0 }
+  return {
+    positions: record?.positions || defaultFloorLayout(),
+    columns: record?.columns || floorColumns,
+    rows: record?.rows || floorRows,
+    version: record?.version || 0,
+  }
 }
 
 export async function readFloor() {
   return floorProjection(await lookup(floorLayoutId))
+}
+
+export async function tableExists(id) {
+  if (!isTableId(id)) return false
+  if (tableIds.includes(id)) return true
+  return (await readFloor()).positions.some((position) => position.id === id)
 }
 
 export async function readMenu(manager = false) {
@@ -68,13 +79,14 @@ export function staffTable({ history, reviews, seating, ...visit }, role) {
     payments: safePayments(visit.payments),
   }
 }
-export async function staffTables(role) {
+export async function staffTables(role, layout) {
+  const ids = (layout || (await readFloor())).positions.map((position) => position.id)
   const db = await database()
   const records = db
-    ? await db.find({ _id: { $in: tableIds } }).toArray()
-    : tableIds.map((id) => memory.get(id)).filter(Boolean)
+    ? await db.find({ _id: { $in: ids } }).toArray()
+    : ids.map((id) => memory.get(id)).filter(Boolean)
   const indexed = new Map(records.map((record) => [record._id, record]))
-  return tableIds.map((id) => staffTable(indexed.get(id) || empty(id), role))
+  return ids.map((id) => staffTable(indexed.get(id) || empty(id), role))
 }
 export const deliveryPublic = (record) => ({
   id: record.id,
