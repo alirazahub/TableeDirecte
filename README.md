@@ -62,3 +62,24 @@ Set `PUBLIC_URL` to the HTTPS guest URL if using a custom domain. When rotating 
 The local Express server handles WebSocket upgrades at `/api/live`. On Vercel, the Next.js route uses Vercel’s Node.js WebSocket runtime. In production, each socket instance listens for MongoDB change-stream events and sends invalidations. Clients refetch authorized data over HTTP, reconnect when the socket closes, and fall back to refresh if it is unavailable. Use Atlas or a MongoDB replica set for change streams. With in-memory Vercel demo data, requests can land on separate instances and updates can fall back to periodic refresh or lose test state.
 
 Without demo mode, guests can ask staff to settle the bill. Staff record payment collected separately, including tips and split amounts. This project has no card processor. Rewards are per-visit points and reviews are collected in the floor dashboard for the active visit. Before public deployment, add edge rate limits and replace the shared staff code with individual staff accounts if you need an audit trail.
+
+## Seeded demo and test accounts
+
+The hosted demo starts with sample records when no MongoDB URL is configured. For a persistent demo, set `MONGODB_URI` to a test MongoDB connection, `MONGODB_DATABASE=TableeDirecteDemo`, and `DEMO_MODE=true`, then run:
+
+```sh
+npm run seed:demo
+```
+
+The command requires a database name ending in `Demo` and inserts only missing fixture records. It preserves edited records and existing accounts on re-runs. Use sample data and passwords only on demo deployments.
+
+| Account | Password | Try this |
+| --- | --- | --- |
+| `manager` | `2468` | Open **Reports** for a closed visit with sales, tips, and a rating. Open **Menu** and restore Chocolate Layer Cake. |
+| `reception` | `3579` | Seat a party at Table 08, open its QR code, then assign the new delivery ending in `0001` to the driver. |
+| `floor` | `4680` | Resolve the bill request and record a split payment at Table 04. Mark Table 03 served. |
+| `kitchen` | `5791` | Start the new Table 07 ticket, mark the overdue Table 02 ticket ready, and advance a delivery in the Delivery tab. |
+| `delivery` | `6802` | Start the assigned ready delivery ending in `0003`. On the delivery already in transit, share a location or mark it delivered. |
+| `demo-guest` | `Tablee-Demo-2026!` | Sign in through **Customer account**, open **My orders**, and follow a seeded delivery. Use Table 12 for a fresh QR order, split checkout, and review. |
+
+For live updates, open a guest view and a staff view in separate browser profiles. Try Table 07 and advance its ticket in the kitchen. MongoDB and its change stream provide durable cross-instance updates. The public in-memory demo can reset between requests or deployments.

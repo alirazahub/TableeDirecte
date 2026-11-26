@@ -7,7 +7,7 @@ import {lineTotal as total, paidTotal, serviceReasons, tableBalance as balance} 
 import StaffWorkspace from './staff-workspace'
 import { DeliveryProgress } from './delivery-workspace'
 import { useLiveRefresh } from './live-client'
-import { demoAccounts, roles } from '../lib/roles'
+import { demoAccounts, demoCustomer, roles } from '../lib/roles'
 
 const euro = new Intl.NumberFormat('fr-FR', {style:'currency', currency:'EUR'})
 const money = cents => euro.format(cents / 100)
@@ -267,6 +267,11 @@ export default function Restaurant({table, tableKey}) {
         {!customerOrders.length && <p>No delivery orders on this account.</p>}</div><button onClick={customerSignOut}>Sign out</button>
       </> : <form onSubmit={customerAuth}><h2>{customerMode === 'register' ? 'Create an account' : 'Customer sign-in'}</h2>
         <p>Save delivery orders to your account. QR ordering still works for guests.{config.demo && ' Use a sample password in this demo.'}</p>
+        {config.demo && customerMode === 'signin' && <button type="button" onClick={event => {
+          const form = event.currentTarget.form
+          form.elements.username.value = demoCustomer.username
+          form.elements.password.value = demoCustomer.password
+        }}>Fill demo customer sign-in</button>}
         <label>Username<input name="username" pattern="[a-z0-9_.\-]{3,36}" autoComplete="username" required/></label>
         <label>Password<input name="password" type="password" minLength="10" maxLength="200" autoComplete={customerMode === 'register' ? 'new-password' : 'current-password'} required/></label>
         <button className="primary">{customerMode === 'register' ? 'Create account' : 'Sign in'}</button>

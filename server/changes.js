@@ -28,3 +28,7 @@ export function startChangeFeed() {
     stream.once('error', () => {void stream.close().catch(() => {}); retry()})
   }).catch(retry)
 }
+
+export async function closeDatabase() {
+  if (clientPromise) await (await clientPromise).close()
+}

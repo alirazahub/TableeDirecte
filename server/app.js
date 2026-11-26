@@ -5,6 +5,7 @@ import nodemailer from 'nodemailer'
 import { authenticate, customerCookie, customerFromCookie, demo, drivers, duration, equal, hashPassword, identityConfigured, issueCustomer, issueSession, sessionCookie, sessionFromCookie, trackingKey, verifyTracking } from './auth.js'
 import { canAccessTable, tableIds, tableKey } from './realtime.js'
 import { changes, database } from './changes.js'
+import { demoRecords } from './demo-data.js'
 import { menu } from '../lib/menu.js'
 import { tableBalance, subtotal, paidTotal, tipTotal, serviceReasons, parisDay } from '../lib/operations.js'
 
@@ -13,7 +14,7 @@ app.use(express.json({limit:'24kb'}))
 app.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next() })
 const env = process.env
 const configured = Boolean(env.MONGODB_URI && env.TABLE_KEY?.length >= 32 && identityConfigured)
-const memory = new Map()
+const memory = new Map(demo && !env.MONGODB_URI ? demoRecords().map(record => [record._id,record]) : [])
 const tableRoles = ['manager','reception','floor','kitchen']
 const floorRoles = ['manager','reception','floor']
 const dispatchRoles = ['manager','reception']
