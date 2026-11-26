@@ -1,0 +1,30 @@
+# Tablée Directe
+
+QR table ordering with Next.js and React, an Express API on Node.js, and a MongoDB storage adapter.
+
+## Run the demo
+
+Use Node.js 22 or later. From this directory, install dependencies and configure the demo.
+
+```sh
+npm install
+cp .env.example .env
+npm run api
+```
+
+In a second terminal from the same directory, run `npm run dev` and open [Table 7](http://localhost:3000/?table=7). Use staff code `2468`. Set `PUBLIC_URL` to a reachable LAN or HTTPS address before generating QR codes for phones. For LAN testing, run `npm run dev -- --hostname 0.0.0.0`.
+
+1. In the guest menu, add dishes and place an order.
+2. Open the staff dashboard in a second window. Find Table 07 and send the order to the kitchen. In Kitchen, mark it ready. Return to Floor and mark it served.
+3. In the guest window, call the waiter and settle the bill. To split the bill, enter a partial amount, then settle the remainder in another payment. Leave a review after paying.
+4. Resolve the waiter call on the floor dashboard and close the settled table when the party leaves. Closing clears the table's active visit, including its review and payment records.
+
+Demo mode uses in-memory storage by default and records simulated payments without taking card details. It resets when Express restarts. Set `MONGODB_URI` while in demo mode to persist the test data.
+
+## Persistent operation
+
+Set `DEMO_MODE=false`, configure `MONGODB_URI`, and choose separate long random secrets for `STAFF_PIN` and `TABLE_KEY`. Use a database separate from your demo data. Set `PUBLIC_URL` to your HTTPS guest URL. After changing `TABLE_KEY`, regenerate the QR codes from the staff dashboard. Configure SMTP and the sender address to enable emailed receipts.
+
+Express binds to loopback. Next.js proxies browser requests through `/service`. Co-locate both services and use `npm run build` then `npm start` for the Next.js production process. For a different internal Express port, set `API_ORIGIN` in the Next.js environment before building.
+
+Without demo mode, guests can ask staff to settle the bill. Staff record payment collected separately, including tips and split amounts. This project has no card processor. Rewards are per-visit points and reviews are collected in the floor dashboard for the active visit. Before public deployment, add edge rate limits and replace the shared staff code with individual staff accounts if you need an audit trail.
