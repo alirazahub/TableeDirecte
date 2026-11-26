@@ -13,20 +13,36 @@ export async function database() {
   return client.db(process.env.MONGODB_DATABASE || 'TableeDirecte').collection('tables')
 }
 
-let watchStarted = false
+let feed
 export function startChangeFeed() {
-  if (watchStarted || !process.env.MONGODB_URI) return
-  watchStarted = true
-  const retry = () => {
-    watchStarted = false
-    const timer = setTimeout(startChangeFeed,5000)
-    timer.unref?.()
-  }
-  database().then(collection => {
-    const stream = collection.watch([{ $match:{operationType:{$in:['insert','replace','update','delete']}} }])
-    stream.on('change', event => changes.emit('change',String(event.documentKey._id)))
-    stream.once('error', () => {void stream.close().catch(() => {}); retry()})
-  }).catch(retry)
+  if (!process.env.MONGODB_URI) return Promise.resolve()
+  if (feed) return feed
+  feed = database().then(async collection => {
+    const stream = collection.watch(
+      [{$match:{operationType:{$in:['insert','replace','update','delete']}}}],
+      {fullDocument:'updateLookup',maxAwaitTimeMS:1000}
+    )
+    const publish = event => changes.emit('change',String(event.documentKey._id),event.fullDocument)
+    try {
+      const first = await stream.tryNext()
+      if (first) publish(first)
+    } catch (error) {
+      await stream.close().catch(() => {})
+      throw error
+    }
+    void (async () => {
+      try {
+        for await (const event of stream) publish(event)
+      } finally {await stream.close().catch(() => {})}
+    })().catch(() => {
+      feed = undefined
+      changes.emit('feed-error')
+    })
+  }).catch(error => {
+    feed = undefined
+    throw error
+  })
+  return feed
 }
 
 export async function closeDatabase() {

@@ -1,31 +1,86 @@
 import { createHmac } from 'node:crypto'
 import { demo, equal, sessionFromCookie, verifyTracking } from './auth.js'
 import { changes, startChangeFeed } from './changes.js'
+import { availability, configured, deliveryFor, deliveryPublic, deliveryRecordId, empty, guestData, lookup, staffDeliveries, staffTable, staffTables, tableIds, tableRoles } from './store.js'
+import { roles } from '../lib/roles.js'
 
-export const tableIds = Array.from({length:12}, (_, i) => String(i + 1))
 export const tableKey = id => demo && !process.env.TABLE_KEY ? '' : createHmac('sha256',process.env.TABLE_KEY || '').update(id).digest('hex')
 export function canAccessTable(table,key) {
   return tableIds.includes(table) && Boolean(demo || process.env.TABLE_KEY) && equal(key || '',tableKey(table))
 }
-const tableRoles = ['manager','reception','floor','kitchen']
-export function subscribe({cookie, table, key, tracking, notify, terminate}) {
-  const account = sessionFromCookie(cookie)
-  const guest = canAccessTable(table,key)
-  const trackingId = verifyTracking(tracking)
-  const deliveryId = trackingId ? 'delivery-' + trackingId : ''
-  if (!account && !guest && !deliveryId) return null
-  startChangeFeed()
-  const update = id => {
-    if (id === 'menu-settings' || (guest && id === table) ||
-      (account && tableRoles.includes(account.role) && tableIds.includes(id)) ||
-      (id.startsWith('delivery-') && account && ['manager','reception','kitchen','delivery'].includes(account.role)) ||
-      (deliveryId && id === deliveryId)) notify()
+
+function subscribe({cookie,scope,send,terminate}) {
+  if (!demo && !configured) {
+    send({type:'error',message:'Restaurant service has not been configured.'})
+    terminate(1011,'Service unavailable')
+    return
   }
-  changes.on('change',update)
-  // Revalidate over HTTP after reconnections and where demo instances do not share state.
-  const heartbeat = setInterval(notify, demo ? 3500 : 30000)
-  const expiry = account ? setTimeout(terminate, Math.max(0,account.exp*1000-Date.now())) : null
-  return () => {changes.off('change',update);clearInterval(heartbeat);clearTimeout(expiry)}
+  const account = scope.staff ? sessionFromCookie(cookie) : null
+  const {view,table,key,tracking} = scope
+  if (scope.staff && (!account || !roles[account.role].views.includes(view))) {
+    send({type:'error',message:'Please sign in again.',authentication:!account})
+    terminate(1008,'Staff scope denied')
+    return
+  }
+  const guest = !scope.staff && canAccessTable(table,key)
+  const trackingId = !scope.staff && verifyTracking(tracking)
+  const deliveryId = trackingId ? deliveryRecordId(trackingId) : ''
+  const staffTableScope = Boolean(account && tableRoles.includes(account.role) && ['floor','reception','kitchen','reports'].includes(view))
+  const staffDeliveryScope = Boolean(account && view === 'dispatch')
+  const menuScope = !scope.staff || view === 'catalog'
+  let closed = false
+  const queued = new Map()
+  let initialized = false
+
+  function publish(id, record) {
+    if (id === 'menu-settings' && menuScope) send({type:'menu',unavailable:record?.unavailable || []})
+    if (guest && id === table) send({type:'guest',table:guestData(record || empty(id))})
+    if (staffTableScope && tableIds.includes(id)) send({type:'table',table:staffTable(record || empty(id),account.role)})
+    if (deliveryId === id) send({type:'tracking',order:record?.id ? deliveryPublic(record) : null})
+    if (staffDeliveryScope && id.startsWith('delivery-')) {
+      const visible = record?.id && (account.role !== 'delivery' || record.driver === account.username)
+      send(visible ? {type:'delivery',order:deliveryFor(record,account.role)} : {type:'delivery-hidden',id:id.slice(9),version:record?.version})
+    }
+  }
+  function onChange(id,record) {
+    if (initialized) publish(id,record)
+    else queued.set(id,record)
+  }
+
+  const feedFailed = () => terminate(1012,'Live database feed interrupted')
+  changes.on('change',onChange)
+  changes.on('feed-error',feedFailed)
+  const expiry = account ? setTimeout(() => {
+    send({type:'error',message:'Please sign in again.',authentication:true})
+    terminate(1008,'Session expired')
+  },Math.max(0,account.exp*1000-Date.now())) : null
+  const stop = () => {
+    closed = true
+    clearTimeout(expiry)
+    changes.off('change',onChange)
+    changes.off('feed-error',feedFailed)
+    queued.clear()
+  }
+
+  startChangeFeed().then(() => Promise.all([
+    guest ? lookup(table) : null,
+    staffTableScope ? staffTables(account.role) : null,
+    staffDeliveryScope ? staffDeliveries(account) : null,
+    menuScope ? availability() : null,
+    deliveryId ? lookup(deliveryId) : null,
+  ])).then(([record,tables,deliveries,unavailable,tracked]) => {
+      if (closed) return
+      send({
+        type:'snapshot', guest:record ? guestData(record) : undefined,
+        tables:tables || undefined, deliveries:deliveries || undefined, unavailable:unavailable || undefined,
+        tracking:deliveryId ? tracked?.id ? deliveryPublic(tracked) : null : undefined,
+        message:!scope.staff && !guest && !deliveryId ? 'Scan the QR code on your table to order.' : undefined,
+      })
+      initialized = true
+      for (const [id,data] of queued) publish(id,data)
+      queued.clear()
+  }).catch(() => terminate(1011,'Could not load live data'))
+  return stop
 }
 
 export function attachSocket(ws,cookie) {
@@ -37,13 +92,17 @@ export function attachSocket(ws,cookie) {
     try {
       const value = raw.toString()
       if (value.length > 1024) return ws.close(1008,'Invalid subscription')
-      const {table,key,tracking} = JSON.parse(value)
-      const notify = () => {try {ws.send('change')} catch {}}
-      stop = subscribe({cookie,table,key,tracking,notify,terminate:() => ws.close(1008,'Session expired')})
-      if (!stop) return ws.close(1008,'Unauthorized')
+      const scope = JSON.parse(value)
+      if (!scope || Array.isArray(scope) || typeof scope !== 'object') return ws.close(1008,'Invalid subscription')
+      const send = payload => {
+        if (ws.readyState !== 1) return
+        if (ws.bufferedAmount > 1024 * 1024) return ws.close(1013,'Reconnect to resync')
+        ws.send(JSON.stringify(payload))
+      }
+      stop = subscribe({cookie,scope,send,terminate:(code,reason) => ws.close(code,reason)})
+      if (!stop) return
       subscribed = true
       clearTimeout(deadline)
-      ws.send('ready')
     } catch {ws.close(1008,'Invalid subscription')}
   })
   ws.on('close',() => {clearTimeout(deadline);stop?.()})

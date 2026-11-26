@@ -2,10 +2,10 @@ import express from 'express'
 import { randomUUID } from 'node:crypto'
 import QRCode from 'qrcode'
 import nodemailer from 'nodemailer'
-import { authenticate, customerCookie, customerFromCookie, demo, drivers, duration, equal, hashPassword, identityConfigured, issueCustomer, issueSession, sessionCookie, sessionFromCookie, trackingKey, verifyTracking } from './auth.js'
-import { canAccessTable, tableIds, tableKey } from './realtime.js'
+import { authenticate, customerCookie, customerFromCookie, demo, drivers, duration, equal, hashPassword, issueCustomer, issueSession, sessionCookie, sessionFromCookie, trackingKey, verifyTracking } from './auth.js'
+import { canAccessTable, tableKey } from './realtime.js'
 import { changes, database } from './changes.js'
-import { demoRecords } from './demo-data.js'
+import { availability, configured, deliveryFor, deliveryPublic, deliveryRecordId, deliveryRoles, dispatchRoles, empty, guestData, lookup, memory, staffDeliveries, staffTable, staffTables, tableIds, tableRoles } from './store.js'
 import { menu } from '../lib/menu.js'
 import { tableBalance, subtotal, paidTotal, tipTotal, serviceReasons, parisDay } from '../lib/operations.js'
 
@@ -13,11 +13,7 @@ const app = express()
 app.use(express.json({limit:'24kb'}))
 app.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next() })
 const env = process.env
-const configured = Boolean(env.MONGODB_URI && env.TABLE_KEY?.length >= 32 && identityConfigured)
-const memory = new Map(demo && !env.MONGODB_URI ? demoRecords().map(record => [record._id,record]) : [])
-const tableRoles = ['manager','reception','floor','kitchen']
 const floorRoles = ['manager','reception','floor']
-const dispatchRoles = ['manager','reception']
 const healthy = req => {
   if (!demo && !configured) throw problem(503, 'Restaurant service has not been configured.')
 }
@@ -39,11 +35,6 @@ app.use((req,res,next) => {
   if (!['/config','/session'].includes(req.path)) healthy(req)
   next()
 })
-const empty = id => ({_id:id, version:0, orders:[], calls:[], payments:[], reviews:[], history:[]})
-async function lookup(id) {
-  const tables = await database()
-  return tables ? await tables.findOne({_id:id}) || empty(id) : memory.get(id) || empty(id)
-}
 const problem = (status, message) => Object.assign(new Error(message), {status})
 async function update(id, change) {
   const tables = await database()
@@ -55,7 +46,7 @@ async function update(id, change) {
     if (!tables) {
       if ((memory.get(id)?.version || 0) !== before.version) continue
       memory.set(id, after)
-      changes.emit('change',id)
+      changes.emit('change',id,after)
       return after
     }
     try {
@@ -67,10 +58,6 @@ async function update(id, change) {
   }
   throw problem(409, 'The table changed. Please try again.')
 }
-const guestData = ({history, reviews, seating, ...visit}) => ({
-  ...visit, reviewed:Boolean(reviews?.length),
-  payments:visit.payments.map(({email, ...payment}) => payment),
-})
 const loginAttempts = new Map()
 const cookieOptions = req => ({httpOnly:true,sameSite:'strict',secure:Boolean(env.VERCEL || req.secure || req.get('x-forwarded-proto') === 'https'),path:'/'})
 function checkAttempts(req) {
@@ -137,7 +124,6 @@ app.post('/customer',async (req,res) => {
   res.cookie(customerCookie,issueCustomer(username),{...cookieOptions(req),maxAge:duration * 1000})
   res.json({username})
 })
-const availability = async () => (await lookup('menu-settings')).unavailable || []
 app.get('/menu', async (req, res) => res.json({unavailable:await availability()}))
 app.post('/menu', async (req, res) => {
   requireRole(req,['manager','kitchen'])
@@ -159,14 +145,7 @@ app.param('id', (req, res, next, id) => {
 app.get('/config', (req, res) => res.json({demo, wifi:env.GUEST_WIFI || 'Tablée Directe Guest', wifiPassword:env.GUEST_WIFI_PASSWORD || ''}))
 app.get('/tables', async (req, res) => {
   requireRole(req,tableRoles)
-  const records = await Promise.all(tableIds.map(lookup))
-  const role = req.account.role
-  res.json(records.map(record => {
-    const {history,reviews,seating,...visit} = record
-    if (role === 'kitchen') return {_id:visit._id,version:visit.version,orders:visit.orders,calls:[],payments:[]}
-    return {...visit,seating, reviews:role === 'manager' ? reviews : [], history:role === 'manager' ? history : [],
-      payments:visit.payments.map(({email,...payment}) => payment)}
-  }))
+  res.json(await staffTables(req.account.role))
 })
 app.get('/tables/:id/qr', async (req, res) => {
   requireRole(req,floorRoles)
@@ -284,32 +263,12 @@ app.post('/tables/:id', async (req, res) => {
       } catch { notice = 'Payment recorded. Receipt email could not be sent.' }
     } else notice = 'Payment recorded. Receipt email is unavailable.'
   }
-  res.json({table:guestData(data), notice})
+  res.json({table:hasRole(req,tableRoles) ? staffTable(data,req.account.role) : guestData(data), notice})
 })
-const deliveryRoles = ['manager','reception','kitchen','delivery']
 const deliveryStates = ['Placed','Cooking','Ready','Out for delivery','Delivered','Cancelled']
-const deliveryPublic = record => ({
-  id:record.id, items:record.items, total:record.total, status:record.status,
-  events:record.events, location:record.status === 'Out for delivery' ? record.location : undefined,
-})
-const deliveryFor = (record,role) => role === 'kitchen'
-  ? {...deliveryPublic(record),note:record.note}
-  : {...deliveryPublic(record),recipient:record.recipient,address:record.address,phone:record.phone,
-     driver:record.driver,note:record.note}
-const deliveryRecordId = id => 'delivery-' + id
-async function deliveries() {
-  const db = await database()
-  return db ? db.find({_id:/^delivery-/}).sort({createdAt:-1}).limit(150).toArray()
-    : [...memory.values()].filter(record => record._id.startsWith('delivery-')).reverse().slice(0,150)
-}
 app.get('/deliveries',async (req,res) => {
   requireRole(req,deliveryRoles)
-  const {role,username} = req.account
-  const records = await deliveries()
-  res.json({
-    drivers:dispatchRoles.includes(role) ? drivers() : [],
-    orders:records.filter(record => role !== 'delivery' || record.driver === username).map(record => deliveryFor(record,role)),
-  })
+  res.json(await staffDeliveries(req.account))
 })
 app.post('/deliveries',async (req,res) => {
   const {items,note} = req.body || {}

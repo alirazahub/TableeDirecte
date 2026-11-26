@@ -6,7 +6,7 @@ import {categories, menu} from '../lib/menu'
 import {lineTotal as total, paidTotal, serviceReasons, tableBalance as balance} from '../lib/operations'
 import StaffWorkspace from './staff-workspace'
 import { DeliveryProgress } from './delivery-workspace'
-import { useLiveRefresh } from './live-client'
+import { useLiveData } from './live-client'
 import { demoAccounts, demoCustomer, roles } from '../lib/roles'
 
 const euro = new Intl.NumberFormat('fr-FR', {style:'currency', currency:'EUR'})
@@ -59,33 +59,48 @@ export default function Restaurant({table, tableKey}) {
   const points = Math.floor(paidTotal(guest?.payments || []) / 100)
   const bill = (payTable && tables.find(item => item._id === payTable._id)) || guest
   const staffMode = view !== 'menu' && Boolean(account)
-  const live = useLiveRefresh(staffMode ? {staff:account.username,view} : {table,key:tableKey,tracking},async () => {
-    const tableRequest = staffMode
-      ? account.role !== 'delivery' ? api('tables') : Promise.resolve(null)
-      : api('tables/' + table, tableKey)
-    const deliveryRequest = staffMode && roles[account.role].views.includes('dispatch') && view === 'dispatch'
-      ? api('deliveries') : tracking && !staffMode ? api('track','',undefined,tracking) : Promise.resolve(null)
-    const [tableResult,deliveryResult,menuResult] = await Promise.allSettled([tableRequest,deliveryRequest,api('menu')])
-    if (tableResult.status === 'fulfilled') {
-      if (tableResult.value) {
-        if (staffMode) setTables(tableResult.value)
-        else setGuest(tableResult.value)
-      }
-      setConnection('')
-    } else if (staffMode && tableResult.reason.status === 401) {
-      setAccount(null);setView('menu');setToast('Please sign in again.')
-    } else setConnection(tableResult.reason.message)
-    if (deliveryResult.status === 'fulfilled' && deliveryResult.value) {
-      if (staffMode) {
-        setDeliveryOrders(deliveryResult.value.orders)
-        setDrivers(deliveryResult.value.drivers)
-      } else setTracked(deliveryResult.value)
-    } else if (deliveryResult.status === 'rejected') {
-      if (staffMode && deliveryResult.reason.status === 401) {
-        setAccount(null);setView('menu');setToast('Please sign in again.')
-      } else if (staffMode) setConnection(deliveryResult.reason.message)
+  const live = useLiveData(staffMode ? {staff:true,view} : {table,key:tableKey,tracking},message => {
+    switch (message.type) {
+      case 'snapshot':
+        if (message.guest) setGuest(message.guest)
+        if (message.tables) setTables(message.tables)
+        if (message.deliveries) {
+          setDeliveryOrders(message.deliveries.orders)
+          setDrivers(message.deliveries.drivers)
+        }
+        if (message.unavailable) setUnavailable(message.unavailable)
+        if (Object.hasOwn(message,'tracking')) setTracked(message.tracking)
+        setConnection(message.message || '')
+        break
+      case 'guest':
+        setGuest(previous => previous && message.table.version < previous.version ? previous : message.table)
+        break
+      case 'table':
+        setTables(previous => previous.map(item => item._id === message.table._id && message.table.version >= item.version ? message.table : item))
+        break
+      case 'menu':
+        setUnavailable(message.unavailable)
+        break
+      case 'tracking':
+        setTracked(previous => message.order && previous?.id === message.order.id && previous.version > message.order.version ? previous : message.order)
+        break
+      case 'delivery':
+        setDeliveryOrders(previous => {
+          const order = message.order
+          const known = previous.find(item => item.id === order.id)
+          return known ? previous.map(item => item.id === order.id && order.version >= item.version ? order : item)
+            : [...previous,order].sort((a,b) => b.createdAt - a.createdAt).slice(0,150)
+        })
+        break
+      case 'delivery-hidden':
+        setDeliveryOrders(previous => previous.filter(item => item.id !== message.id ||
+          (message.version !== undefined && item.version > message.version)))
+        break
+      case 'error':
+        if (message.authentication) {setAccount(null);setView('menu');setToast(message.message)}
+        else setConnection(message.message)
+        break
     }
-    if (menuResult.status === 'fulfilled') setUnavailable(menuResult.value.unavailable)
   })
 
   useEffect(() => {
@@ -126,8 +141,8 @@ export default function Restaurant({table, tableKey}) {
     setBusy(true)
     try {
       const result = await api('tables/' + id, staffMode ? '' : tableKey, body)
-      if (staffMode) setTables(previous => previous.map(item => item._id === id ? {...item, ...result.table} : item))
-      if (id === table && !staffMode) setGuest(result.table)
+      if (staffMode) setTables(previous => previous.map(item => item._id === id && result.table.version >= item.version ? result.table : item))
+      if (id === table && !staffMode) setGuest(previous => previous && previous.version > result.table.version ? previous : result.table)
       setToast(result.notice || message)
       after?.()
     } catch (error) {setToast(error.message)}
@@ -188,7 +203,7 @@ export default function Restaurant({table, tableKey}) {
     setBusy(true)
     try {
       const order = await api('deliveries/' + id,'',body)
-      setDeliveryOrders(previous => previous.map(item => item.id === id ? order : item))
+      setDeliveryOrders(previous => previous.map(item => item.id === id && order.version >= item.version ? order : item))
       setToast('Delivery updated.')
     } catch (error) {setToast(error.message)}
     finally {setBusy(false)}
@@ -224,7 +239,7 @@ export default function Restaurant({table, tableKey}) {
       <span className="table-tag"><span/> Table {String(table).padStart(2, '0')}</span>
     </div></header>
     <main className="shell">
-    {connection && <p className="connection" role="status">{connection}</p>}
+    {(connection || !live) && <p className="connection" role="status">{connection || 'Connecting to live updates…'}</p>}
     {!staffMode ? <>
       <section className="hero"><div className="hero-content"><span className="hero-label"><span/> THE TABLÉE DIRECTE EXPERIENCE</span><h1>Good food.<br/><em>Better company.</em></h1><p>Settle in, explore the menu, and order whenever you’re ready.</p><button className="hero-action" onClick={() => setPanel('guide')}>How it works</button>{tracking && <button className="hero-action track-action" onClick={() => setPanel('tracking')}>Track delivery</button>}</div></section>
       <div className="shortcuts">

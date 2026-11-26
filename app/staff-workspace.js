@@ -77,7 +77,7 @@ export default function StaffWorkspace({view,setView,tables,now,busy,perform,mon
     (filter === 'Requests' && pendingCalls(table).length) || (filter === 'Unpaid' && tableBalance(table) > 0))
 
   return <section className="workspace">
-    <header className="workspace-head"><div><p>{roles[account.role].label} · {account.username}</p><h1>Service dashboard</h1></div><span className="live-indicator">{demo ? 'Demo · ' : ''}{live ? 'Socket connected' : 'Syncing by refresh'}</span></header>
+    <header className="workspace-head"><div><p>{roles[account.role].label} · {account.username}</p><h1>Service dashboard</h1></div><span className="live-indicator">{demo ? 'Demo · ' : ''}{live ? 'Socket connected' : 'Connecting to live updates'}</span></header>
     <nav className="workspace-nav" aria-label="Staff views">
       {views.filter(([id]) => roles[account.role].views.includes(id)).map(([id,label,Icon]) => <button key={id} className={view === id ? 'is-current' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => setView(id)}><Icon size={18}/>{label}</button>)}
       <button className="logout" onClick={signOut}>Sign out</button>
