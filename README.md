@@ -87,3 +87,7 @@ For live updates, open a guest view and a staff view in separate browser profile
 ## Frontend architecture
 
 `app/restaurant.js` coordinates sessions, user actions, and routing between guest and staff screens. Guest browsing, staff operations, and dialogs live in dedicated components. `app/restaurant-api.js` handles HTTP requests made for user actions. `app/live-client.js` owns WebSocket connection and reconnect behavior, and `app/restaurant-state.js` applies server snapshots and record updates. HTTP action responses use the same reducer as socket updates so older record versions cannot overwrite newer ones.
+
+### Live notifications
+
+The bell opens the current table or staff account’s recent notifications. Use its sound control to mute or enable the chime. Browsers allow sound after an initial click or key press. The initial socket snapshot quietly establishes the baseline, and versioned order updates appear once even if an HTTP action and its WebSocket update both arrive.

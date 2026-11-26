@@ -1,3 +1,5 @@
+import { notificationEvents } from './notification-events.js'
+
 export const initialRestaurantState = {
   guest: null,
   tables: [],
@@ -6,13 +8,15 @@ export const initialRestaurantState = {
   drivers: [],
   tracking: null,
   connection: '',
+  notifications: [],
+  notificationSequence: 0,
 }
 
 function newer(current, incoming) {
   return current && incoming.version < current.version ? current : incoming
 }
 
-export function restaurantReducer(state, message) {
+function reduceData(state, message) {
   switch (message.type) {
     case 'snapshot':
       return {
@@ -64,5 +68,35 @@ export function restaurantReducer(state, message) {
       return { ...state, connection: message.message }
     default:
       return state
+  }
+}
+
+export function restaurantReducer(state, message) {
+  if (message.type === 'dismiss-notification') {
+    return { ...state, notifications: state.notifications.filter((item) => item.id !== message.id) }
+  }
+  if (message.type === 'dismiss-notifications') {
+    return { ...state, notifications: state.notifications.filter((item) => item.scope !== message.scope) }
+  }
+  if (message.type === 'clear-staff') {
+    return {
+      ...reduceData(state, message),
+      notifications: state.notifications.filter((item) => !item.scope.startsWith('staff:')),
+    }
+  }
+  const next = reduceData(state, message)
+  if (!message.notify) return next
+  const events = notificationEvents(state, message)
+  if (!events.length) return next
+  const newItems = events.map((event, index) => ({
+    ...event,
+    id: state.notificationSequence + index + 1,
+    scope: message.scope,
+    at: message.at,
+  }))
+  return {
+    ...next,
+    notificationSequence: state.notificationSequence + events.length,
+    notifications: [...newItems.reverse(), ...state.notifications].slice(0, 40),
   }
 }

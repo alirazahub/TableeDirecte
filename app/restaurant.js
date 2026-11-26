@@ -1,12 +1,13 @@
 'use client'
 import { useEffect, useReducer, useRef, useState } from 'react'
-import { ChefHat, CircleUserRound, LayoutGrid, UtensilsCrossed } from 'lucide-react'
+import { ChefHat, CircleUserRound, LayoutGrid, UtensilsCrossed, X } from 'lucide-react'
 import { menu } from '../lib/menu'
 import { tableBalance as balance } from '../lib/operations'
 import { roles } from '../lib/roles'
 import GuestMenu from './guest-menu'
 import RestaurantDialog from './restaurant-dialog'
 import StaffWorkspace from './staff-workspace'
+import { NotificationBell, NotificationPopups, NotificationTray, useNotificationSound } from './notifications'
 import { useLiveData } from './live-client'
 import { money, restaurantApi } from './restaurant-api'
 import { initialRestaurantState, restaurantReducer } from './restaurant-state'
@@ -21,6 +22,7 @@ export default function Restaurant({ table, tableKey }) {
     drivers,
     tracking: tracked,
     connection,
+    notifications,
   } = state
   const [note, setNote] = useState('')
   const [cart, setCart] = useState({})
@@ -43,19 +45,31 @@ export default function Restaurant({ table, tableKey }) {
   const actionPending = useRef(false)
   const bill = (payTable && tables.find((item) => item._id === payTable._id)) || guest
   const staffMode = view !== 'menu' && Boolean(account)
-  const live = useLiveData(
-    staffMode ? { staff: true, view } : { table, key: tableKey, tracking },
-    (message) => {
-      if (message.type === 'error' && message.authentication) {
-        setAccount(null)
-        setView('menu')
-        setToast(message.message)
-        dispatch({ type: 'clear-staff' })
-        return
-      }
-      dispatch(message)
-    },
-  )
+  const notificationScope = staffMode ? 'staff:' + account.username : 'guest:' + table
+  const currentNotifications = notifications.filter((item) => item.scope === notificationScope)
+  const sound = useNotificationSound(currentNotifications[0])
+  function applyLiveMessage(message) {
+    dispatch({
+      ...message,
+      notify: true,
+      scope: notificationScope,
+      role: staffMode ? account.role : undefined,
+      at: Date.now(),
+    })
+  }
+  const live = useLiveData(staffMode ? { staff: true } : { table, key: tableKey, tracking }, (message) => {
+    if (message.type === 'error' && message.authentication) {
+      setAccount(null)
+      setView('menu')
+      setToast(message.message)
+      dispatch({ type: 'clear-staff' })
+      return
+    }
+    applyLiveMessage(message)
+  })
+  function dismissNotification(id) {
+    dispatch({ type: 'dismiss-notification', id })
+  }
 
   useEffect(() => {
     let active = true
@@ -110,9 +124,14 @@ export default function Restaurant({ table, tableKey }) {
   function perform(body, message, id = table, after) {
     return runAction(async () => {
       const result = await restaurantApi('tables/' + id, { tableKey: staffMode ? undefined : tableKey, body })
-      if (staffMode) dispatch({ type: 'table', table: result.table })
-      else if (id === table) dispatch({ type: 'guest', table: result.table })
-      setToast(result.notice || message)
+      if (staffMode) applyLiveMessage({ type: 'table', table: result.table })
+      else if (id === table) applyLiveMessage({ type: 'guest', table: result.table })
+      if (
+        result.notice ||
+        !['order', 'status', 'call', 'resolve', 'seat', 'close', 'pay'].includes(body.action)
+      ) {
+        setToast(result.notice || message)
+      }
       after?.()
     })
   }
@@ -120,8 +139,7 @@ export default function Restaurant({ table, tableKey }) {
   function toggleDish(id, available) {
     return runAction(async () => {
       const data = await restaurantApi('menu', { body: { id, available } })
-      dispatch({ type: 'menu', unavailable: data.unavailable })
-      setToast(available ? 'Dish available again.' : 'Dish marked sold out.')
+      applyLiveMessage({ type: 'menu', unavailable: data.unavailable })
     })
   }
 
@@ -184,8 +202,8 @@ export default function Restaurant({ table, tableKey }) {
   function performDelivery(id, body) {
     return runAction(async () => {
       const order = await restaurantApi('deliveries/' + id, { body })
-      dispatch({ type: 'delivery', order })
-      setToast('Delivery updated.')
+      applyLiveMessage({ type: 'delivery', order })
+      if (!Object.hasOwn(body, 'status') && !Object.hasOwn(body, 'driver')) setToast('Location shared.')
     })
   }
 
@@ -202,10 +220,16 @@ export default function Restaurant({ table, tableKey }) {
           phone: fields.get('phone'),
         },
       })
+      dispatch({
+        type: 'delivery-placed',
+        notify: true,
+        scope: notificationScope,
+        order: data.order,
+        at: Date.now(),
+      })
       openTracking(data.tracking, data.order)
       setCart({})
       setNote('')
-      setToast('Delivery order received.')
     })
   }
 
@@ -275,14 +299,20 @@ export default function Restaurant({ table, tableKey }) {
               <LayoutGrid size={16} /> Staff dashboard
             </button>
           </nav>
-          <button
-            className="profile-nav"
-            onClick={showCustomer}
-            aria-label={customer ? 'My orders' : 'Customer account'}
-          >
-            <CircleUserRound size={21} />
-            <span>{customer ? 'My orders' : 'Account'}</span>
-          </button>
+          <div className="header-actions">
+            <NotificationBell
+              count={currentNotifications.length}
+              onClick={() => openPanel('notifications')}
+            />
+            <button
+              className="profile-nav"
+              onClick={showCustomer}
+              aria-label={customer ? 'My orders' : 'Customer account'}
+            >
+              <CircleUserRound size={21} />
+              <span>{customer ? 'My orders' : 'Account'}</span>
+            </button>
+          </div>
         </div>
       </header>
       <main id="main-content" className={staffMode ? 'shell staff-shell' : 'shell'}>
@@ -337,11 +367,24 @@ export default function Restaurant({ table, tableKey }) {
         <ChefHat size={17} /> Tablée Directe <span>De la table à la cuisine</span>
       </footer>
       {toast && !panel && (
-        <div className="toast" role="status">
-          {toast}
+        <div className="toast">
+          <span role="status">{toast}</span>
+          <button className="icon-button" aria-label="Dismiss message" onClick={() => setToast('')}>
+            <X size={17} />
+          </button>
         </div>
       )}
-      {panel && (
+      <NotificationPopups items={currentNotifications} dismiss={dismissNotification} visible={!panel} />
+      {panel === 'notifications' && (
+        <NotificationTray
+          items={currentNotifications}
+          dismiss={dismissNotification}
+          sound={sound}
+          clear={() => dispatch({ type: 'dismiss-notifications', scope: notificationScope })}
+          onClose={() => setPanel(null)}
+        />
+      )}
+      {panel && panel !== 'notifications' && (
         <RestaurantDialog
           {...{
             panel,

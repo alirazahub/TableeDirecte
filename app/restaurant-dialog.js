@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { CircleCheck, Sparkles, Star } from 'lucide-react'
+import { CircleCheck, Sparkles, Star, X } from 'lucide-react'
 import { lineTotal as total, paidTotal, serviceReasons, tableBalance as balance } from '../lib/operations'
 import { demoAccounts, demoCustomer, roles } from '../lib/roles'
 import { DeliveryProgress } from './delivery-workspace'
@@ -522,9 +522,12 @@ export default function RestaurantDialog({
         </form>
       )}
       {toast && (
-        <p className="dialog-feedback" role="status">
-          {toast}
-        </p>
+        <div className="dialog-feedback">
+          <span role="status">{toast}</span>
+          <button className="icon-button" aria-label="Dismiss message" onClick={() => setToast('')}>
+            <X size={17} />
+          </button>
+        </div>
       )}
     </Dialog>
   )
