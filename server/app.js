@@ -4,6 +4,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 import QRCode from 'qrcode'
 import nodemailer from 'nodemailer'
 import { menu } from '../lib/menu.js'
+import { tableBalance, subtotal, paidTotal, tipTotal, serviceReasons, parisDay } from '../lib/operations.js'
 
 const app = express()
 app.use(express.json({limit:'24kb'}))
@@ -31,7 +32,7 @@ const equal = (a, b) => typeof a === 'string' && Buffer.byteLength(a) === Buffer
   timingSafeEqual(Buffer.from(a), Buffer.from(b))
 const isStaff = req => equal(req.get('X-Staff-Pin'), staffPin)
 const tableIds = Array.from({length:12}, (_, i) => String(i + 1))
-const empty = id => ({_id:id, version:0, orders:[], calls:[], payments:[], reviews:[]})
+const empty = id => ({_id:id, version:0, orders:[], calls:[], payments:[], reviews:[], history:[]})
 async function lookup(id) {
   const tables = await collection()
   return tables ? await tables.findOne({_id:id}) || empty(id) : memory.get(id) || empty(id)
@@ -58,11 +59,25 @@ async function update(id, change) {
   }
   throw problem(409, 'The table changed. Please try again.')
 }
-const orderTotal = order => order.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
-const total = data => data.orders.reduce((sum, order) => sum + orderTotal(order), 0)
-const due = data => total(data) - data.payments.reduce((sum, payment) => sum + payment.amount, 0)
 const tableKey = id => demo && !env.TABLE_KEY ? '' : createHmac('sha256', env.TABLE_KEY).update(id).digest('hex')
-const guestData = data => ({...data, reviews:undefined, payments:data.payments.map(({email, ...payment}) => payment)})
+const guestData = ({history, reviews, ...visit}) => ({
+  ...visit, reviewed:Boolean(reviews?.length),
+  payments:visit.payments.map(({email, ...payment}) => payment),
+})
+const availability = async () => (await lookup('menu-settings')).unavailable || []
+app.get('/menu', async (req, res) => res.json({unavailable:await availability()}))
+app.post('/menu', async (req, res) => {
+  if (!isStaff(req)) throw problem(401, 'Enter your staff PIN.')
+  const {id, available} = req.body || {}
+  if (!menu.some(item => item.id === id) || typeof available !== 'boolean') throw problem(400, 'Choose a valid dish and availability.')
+  const settings = await update('menu-settings', state => {
+    const items = new Set(state.unavailable || [])
+    if (available) items.delete(id)
+    else items.add(id)
+    state.unavailable = [...items]
+  })
+  res.json({unavailable:settings.unavailable})
+})
 app.param('id', (req, res, next, id) => {
   if (!tableIds.includes(id)) return next(problem(404, 'Table not found.'))
   if (!isStaff(req) && !equal(req.get('X-Table-Key') || '', tableKey(id))) return next(problem(403, 'Scan the QR code on your table to continue.'))
@@ -83,10 +98,11 @@ app.get('/tables/:id/qr', async (req, res) => {
 })
 app.get('/tables/:id', async (req,res) => res.json(guestData(await lookup(req.params.id))))
 app.post('/tables/:id', async (req, res) => {
-  const {action, items, orderId, callId, status, amount, tip, rating, comment, email} = req.body
+  const {action, items, orderId, callId, status, amount, tip, rating, comment, email, note, reason, method} = req.body || {}
   const staff = isStaff(req)
   const now = Date.now()
   const id = randomUUID()
+  const unavailable = action === 'order' ? await availability() : []
   let receipt
   const data = await update(req.params.id, state => {
     switch (action) {
@@ -95,31 +111,38 @@ app.post('/tables/:id', async (req, res) => {
         const lines = items.map(item => {
           const dish = menu.find(dish => dish.id === item?.id)
           if (!dish || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 20) throw problem(400, 'Invalid item or quantity.')
+          if (unavailable.includes(dish.id)) throw problem(409, dish.name + ' is currently sold out.')
           return {id:dish.id, name:dish.name, price:dish.price, quantity:item.quantity}
         })
-        state.orders.push({id, items:lines, status:'Placed', createdAt:now, updatedAt:now})
+        state.orders.push({id, items:lines, note:typeof note === 'string' ? note.trim().slice(0, 250) : '', status:'Placed', createdAt:now, updatedAt:now})
         break
       }
-      case 'call':
-        if (!state.calls.some(call => !call.resolved)) state.calls.push({id, createdAt:now, resolved:false})
+      case 'call': {
+        const kind = typeof reason === 'string' && Object.hasOwn(serviceReasons, reason) ? reason : 'help'
+        if (!state.calls.some(call => !call.resolved && (call.reason || 'help') === kind)) {
+          state.calls.push({id, reason:kind, createdAt:now, resolved:false})
+        }
         break
+      }
       case 'review':
-        if (!state.payments.length || due(state) !== 0 || !Number.isInteger(rating) || rating < 1 || rating > 5) throw problem(400, 'Pay your bill and select a rating.')
+        if (!state.payments.length || tableBalance(state) !== 0 || !Number.isInteger(rating) || rating < 1 || rating > 5) throw problem(400, 'Pay your bill and select a rating.')
         if (state.reviews.length) throw problem(409, 'This table has already left a review.')
         state.reviews.push({id, rating, comment:String(comment || '').slice(0, 500), createdAt:now})
         break
       case 'pay':
         if (!demo && !staff) throw problem(403, 'Ask your waiter to collect payment.')
-        if (!Number.isInteger(amount) || amount <= 0 || amount > due(state) || !Number.isInteger(tip) || tip < 0 || tip > amount) throw problem(400, 'Enter a valid payment amount and tip.')
+        if (!Number.isInteger(amount) || amount <= 0 || amount > tableBalance(state) || !Number.isInteger(tip) || tip < 0 || tip > amount) throw problem(400, 'Enter a valid payment amount and tip.')
         if (email && (typeof email !== 'string' || email.length > 180 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw problem(400, 'Enter a valid email address.')
-        receipt = {id, amount, tip, email:email || '', createdAt:now}
+        const paymentMethod = staff && ['card', 'cash', 'voucher'].includes(method) ? method : demo ? 'demo' : 'card'
+        receipt = {id, amount, tip, method:paymentMethod, email:email || '', createdAt:now}
         state.payments.push(receipt)
         break
       case 'status': {
         if (!staff) throw problem(403, 'Staff access required.')
         const order = state.orders.find(order => order.id === orderId)
-        const next = {'Placed':'Cooking', 'Cooking':'Ready', 'Ready':'Served'}
-        if (!order || !next[order.status] || next[order.status] !== status) throw problem(409, 'That order has already changed.')
+        const next = {Placed:['Cooking','Cancelled'], Cooking:['Ready'], Ready:['Served'], Served:[], Cancelled:[]}
+        const cancellable = status !== 'Cancelled' || !state.payments.length
+        if (!order || !next[order.status]?.includes(status) || !cancellable) throw problem(409, 'That order has already changed.')
         Object.assign(order, {status, updatedAt:now})
         break
       }
@@ -130,11 +153,29 @@ app.post('/tables/:id', async (req, res) => {
         call.resolved = true
         break
       }
-      case 'close':
+      case 'close': {
         if (!staff) throw problem(403, 'Staff access required.')
-        if (due(state) || state.orders.some(order => order.status !== 'Served') || state.calls.some(call => !call.resolved)) throw problem(409, 'Serve all orders, resolve waiter calls, and settle the bill before closing.')
-        Object.assign(state, empty(state._id), {version:state.version})
+        if (tableBalance(state) || state.orders.some(order => !['Served','Cancelled'].includes(order.status)) || state.calls.some(call => !call.resolved)) throw problem(409, 'Serve all orders, resolve waiter calls, and settle the bill before closing.')
+        const history = state.history || []
+        if (state.orders.length || state.calls.length) {
+          const review = state.reviews[0]
+          const paymentDays = {}
+          for (const payment of state.payments) {
+            const day = parisDay(payment.createdAt)
+            paymentDays[day] ??= {collected:0,tips:0}
+            paymentDays[day].collected += payment.amount
+            paymentDays[day].tips += payment.tip
+          }
+          history.unshift({
+            id, closedAt:now, paymentDays, orders:state.orders.filter(order => order.status === 'Served').length,
+            cancelled:state.orders.filter(order => order.status === 'Cancelled').length,
+            sales:subtotal(state.orders), collected:paidTotal(state.payments), tips:tipTotal(state.payments),
+            rating:review?.rating,
+          })
+        }
+        Object.assign(state, empty(state._id), {version:state.version, history:history.slice(0, 100)})
         break
+      }
       default: throw problem(400, 'Unknown action.')
     }
   })
@@ -144,7 +185,7 @@ app.post('/tables/:id', async (req, res) => {
       try {
         await nodemailer.createTransport(env.SMTP_URL).sendMail({
           from:env.RECEIPT_FROM, to:receipt.email, subject:'Your Tablée Directe receipt',
-          text:'Table ' + req.params.id + '\nReceipt ' + receipt.id + '\nBill: $' + (receipt.amount / 100).toFixed(2) + '\nTip: $' + (receipt.tip / 100).toFixed(2) + '\nPaid: $' + ((receipt.amount + receipt.tip) / 100).toFixed(2),
+          text:'Table ' + req.params.id + '\nReceipt ' + receipt.id + '\nBill: EUR ' + (receipt.amount / 100).toFixed(2) + '\nTip: EUR ' + (receipt.tip / 100).toFixed(2) + '\nPaid: EUR ' + ((receipt.amount + receipt.tip) / 100).toFixed(2),
         })
         notice = 'Payment recorded and receipt emailed.'
       } catch { notice = 'Payment recorded. Receipt email could not be sent.' }
