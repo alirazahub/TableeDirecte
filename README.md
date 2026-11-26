@@ -97,3 +97,9 @@ The bell opens the current table or staff account’s recent notifications. Use 
 Sign in as a manager and open **Menu management**. Choose **Add dish** or edit an existing dish. A choice group can require a single selection (minimum and maximum of one), offer optional extras (minimum zero), or allow several selections. Individual choices can add to the base price. Archive a dish to remove it from the guest menu, or restore it later. Kitchen accounts can change availability without editing dishes.
 
 The **Signature Burger Meal** is a guest example with a required side, drink, and size, plus optional extras. Guests can edit cart lines and add special instructions. The API validates choices and computes the price from the live catalog. Placed orders preserve their original option names and prices for tickets and bills. With MongoDB configured, menu changes persist and broadcast to other devices over WebSockets. The hosted in-memory demo keeps changes only within its function instance.
+
+### Dining room map
+
+Managers can open **Floor plan → Design layout** to arrange the 12 dining tables. Drag a table or use the arrow keys and position fields, then set its label, shape, and seat count. Save publishes the layout to floor, reception, and kitchen staff over the existing WebSocket connection. Floor and reception staff can select a table to jump to its card. Kitchen staff can expand the map and select a table to filter its tickets.
+
+Layouts are stored in MongoDB independently of service records and QR links. A default grid is shown until the first save. Saved layouts reject overlap, out-of-bounds positions, and edits based on an older version.

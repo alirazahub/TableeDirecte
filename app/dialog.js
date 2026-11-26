@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 
-export default function Dialog({ label, onClose, children }) {
+export default function Dialog({ label, onClose, children, className = '' }) {
   const dialog = useRef(null)
 
   useEffect(() => {
@@ -15,7 +15,7 @@ export default function Dialog({ label, onClose, children }) {
   return (
     <dialog
       ref={dialog}
-      className="modal"
+      className={['modal', className].filter(Boolean).join(' ')}
       aria-label={label}
       onCancel={(event) => {
         event.preventDefault()

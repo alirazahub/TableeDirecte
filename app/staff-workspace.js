@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import DeliveryWorkspace from './delivery-workspace'
 import { roles } from '../lib/roles'
+import FloorMap from './floor-map'
 import MenuWorkspace from './menu-workspace'
 import OrderLineOptions from './order-line-options'
 import { orderSubtotal, paidTotal, parisDay, serviceReasons, tableBalance, tipTotal } from '../lib/operations'
@@ -149,6 +150,8 @@ export default function StaffWorkspace({
   view,
   setView,
   tables,
+  floorLayout,
+  saveFloorLayout,
   busy,
   perform,
   money,
@@ -177,6 +180,30 @@ export default function StaffWorkspace({
     const timer = setInterval(tick, 1000)
     return () => clearInterval(timer)
   }, [view])
+  const [focusedTable, setFocusedTable] = useState(null)
+  const [kitchenTable, setKitchenTable] = useState(null)
+
+  function locateTable(id) {
+    if (view === 'kitchen') {
+      setKitchenTable(id)
+      return
+    }
+    setFilter('All tables')
+    setFocusedTable(id)
+    requestAnimationFrame(() => document.getElementById('staff-table-' + id)?.focus())
+  }
+
+  const roomMap = (
+    <FloorMap
+      layout={floorLayout}
+      tables={tables}
+      canEdit={account.role === 'manager' && view === 'floor'}
+      onSave={saveFloorLayout}
+      onLocate={locateTable}
+      selected={view === 'kitchen' ? kitchenTable : focusedTable}
+    />
+  )
+
   const [filter, setFilter] = useState('All tables')
   const [reportDay, setReportDay] = useState('')
   const active = tables.filter(occupied)
@@ -291,6 +318,7 @@ export default function StaffWorkspace({
                 <strong>{money(balance)}</strong>
               </div>
             </div>
+            {roomMap}
             <div className="workspace-title">
               <h2>Tables</h2>
               <div className="filters">
@@ -308,7 +336,13 @@ export default function StaffWorkspace({
             </div>
             <div className="floor">
               {filtered.map((table) => (
-                <article className="staff-card expanded-table" key={table._id}>
+                <article
+                  className="staff-card expanded-table"
+                  key={table._id}
+                  id={'staff-table-' + table._id}
+                  tabIndex={-1}
+                  data-located={focusedTable === table._id}
+                >
                   <div className="staff-card-head">
                     <div>
                       <h3>{tableName(table._id)}</h3>
@@ -396,9 +430,16 @@ export default function StaffWorkspace({
                 <strong>{tables.reduce((count, table) => count + (table.seating?.party || 0), 0)}</strong>
               </div>
             </div>
+            {roomMap}
             <div className="floor">
               {tables.map((table) => (
-                <article className="staff-card expanded-table" key={table._id}>
+                <article
+                  className="staff-card expanded-table"
+                  key={table._id}
+                  id={'staff-table-' + table._id}
+                  tabIndex={-1}
+                  data-located={focusedTable === table._id}
+                >
                   <div className="staff-card-head">
                     <h3>{tableName(table._id)}</h3>
                     <button
@@ -437,13 +478,25 @@ export default function StaffWorkspace({
         )}
         {view === 'kitchen' && (
           <>
+            <details className="kitchen-map">
+              <summary>Show dining room map</summary>
+              {roomMap}
+            </details>
+            {kitchenTable && (
+              <div className="workspace-title">
+                <strong>Tickets for {tableName(kitchenTable)}</strong>
+                <button onClick={() => setKitchenTable(null)}>Show all tables</button>
+              </div>
+            )}
             <p className="queue-note">
               <Clock3 size={16} /> Oldest first · Cooking tickets flagged after 12 minutes
             </p>
             <div className="kanban">
               {stages.map((stage) => {
                 const tickets = orders
-                  .filter(({ order }) => order.status === stage)
+                  .filter(
+                    ({ order, table }) => order.status === stage && (!kitchenTable || table === kitchenTable),
+                  )
                   .sort((a, b) => a.order.updatedAt - b.order.updatedAt)
                 return (
                   <section className="kanban-column" data-stage={stage} key={stage}>

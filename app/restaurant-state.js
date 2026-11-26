@@ -4,6 +4,7 @@ import { notificationEvents } from './notification-events.js'
 export const initialRestaurantState = {
   guest: null,
   tables: [],
+  floorLayout: null,
   unavailable: [],
   dishes: menu,
   menuVersion: -1,
@@ -27,6 +28,7 @@ function reduceData(state, message) {
         ...state,
         guest: message.guest || state.guest,
         tables: message.tables || state.tables,
+        floorLayout: message.floorLayout ? newer(state.floorLayout, message.floorLayout) : state.floorLayout,
         unavailable: catalog?.unavailable || message.unavailable || state.unavailable,
         dishes: catalog?.dishes || state.dishes,
         menuVersion: catalog?.version ?? state.menuVersion,
@@ -45,6 +47,8 @@ function reduceData(state, message) {
           table._id === message.table._id ? newer(table, message.table) : table,
         ),
       }
+    case 'floor-layout':
+      return { ...state, floorLayout: newer(state.floorLayout, message.layout) }
     case 'menu':
       return Number.isInteger(message.version) && message.version < state.menuVersion
         ? state
@@ -80,6 +84,7 @@ function reduceData(state, message) {
       return {
         ...state,
         tables: [],
+        floorLayout: null,
         deliveries: [],
         drivers: [],
         dishes: state.dishes.filter((dish) => !dish.archived),

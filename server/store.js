@@ -1,14 +1,17 @@
 import { demo, drivers, identityConfigured } from './auth.js'
 import { database } from './changes.js'
 import { menu } from '../lib/menu.js'
+import { defaultFloorLayout, tableIds } from '../lib/floor-layout.js'
 import { demoRecords } from './demo-data.js'
+
+export { tableIds }
 
 const env = process.env
 export const configured = Boolean(env.MONGODB_URI && env.TABLE_KEY?.length >= 32 && identityConfigured)
 export const memory = new Map(
   demo && !env.MONGODB_URI ? demoRecords().map((record) => [record._id, record]) : [],
 )
-export const tableIds = Array.from({ length: 12 }, (_, i) => String(i + 1))
+
 export const tableRoles = ['manager', 'reception', 'floor', 'kitchen']
 export const dispatchRoles = ['manager', 'reception']
 export const deliveryRoles = ['manager', 'reception', 'kitchen', 'delivery']
@@ -34,6 +37,15 @@ export function menuProjection(record, manager = false) {
     unavailable: record?.unavailable || [],
     version: record?.version || 0,
   }
+}
+
+export const floorLayoutId = 'floor-layout'
+export function floorProjection(record) {
+  return { positions: record?.positions || defaultFloorLayout(), version: record?.version || 0 }
+}
+
+export async function readFloor() {
+  return floorProjection(await lookup(floorLayoutId))
 }
 
 export async function readMenu(manager = false) {

@@ -7,6 +7,9 @@ import {
   deliveryPublic,
   deliveryRecordId,
   empty,
+  floorLayoutId,
+  floorProjection,
+  readFloor,
   guestData,
   lookup,
   menuProjection,
@@ -63,6 +66,8 @@ function subscribe({ cookie, scope, send, terminate }) {
   let initialized = false
 
   function publish(id, record) {
+    if (staffTableScope && id === floorLayoutId)
+      send({ type: 'floor-layout', layout: floorProjection(record) })
     if (id === 'menu-settings' && menuScope)
       send({ type: 'menu', ...menuProjection(record, account?.role === 'manager') })
     if (guest && id === table) send({ type: 'guest', table: guestData(record || empty(id)) })
@@ -112,10 +117,11 @@ function subscribe({ cookie, scope, send, terminate }) {
         staffTableScope ? staffTables(account.role) : null,
         staffDeliveryScope ? staffDeliveries(account) : null,
         menuScope ? readMenu(account?.role === 'manager') : null,
+        staffTableScope ? readFloor() : null,
         deliveryId ? lookup(deliveryId) : null,
       ]),
     )
-    .then(([record, tables, deliveries, catalog, tracked]) => {
+    .then(([record, tables, deliveries, catalog, layout, tracked]) => {
       if (closed) return
       for (const order of deliveries?.orders || []) visibleDeliveries.add(order.id)
       send({
@@ -124,6 +130,7 @@ function subscribe({ cookie, scope, send, terminate }) {
         tables: tables || undefined,
         deliveries: deliveries || undefined,
         catalog: catalog || undefined,
+        floorLayout: layout || undefined,
         tracking: deliveryId ? (tracked?.id ? deliveryPublic(tracked) : null) : undefined,
         message:
           !scope.staff && !guest && !deliveryId ? 'Scan the QR code on your table to order.' : undefined,

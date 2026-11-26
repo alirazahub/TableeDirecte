@@ -28,6 +28,9 @@ import {
   deliveryRoles,
   dispatchRoles,
   empty,
+  floorLayoutId,
+  floorProjection,
+  readFloor,
   guestData,
   lookup,
   memory,
@@ -39,6 +42,7 @@ import {
   tableIds,
   tableRoles,
 } from './store.js'
+import { readFloorLayout } from '../lib/floor-layout.js'
 import { lineKey, quoteDish, readDish } from '../lib/catalog.js'
 import { tableBalance, subtotal, paidTotal, tipTotal, serviceReasons, parisDay } from '../lib/operations.js'
 
@@ -182,6 +186,26 @@ app.post('/customer', async (req, res) => {
   }
   res.cookie(customerCookie, issueCustomer(username), { ...cookieOptions(req), maxAge: duration * 1000 })
   res.json({ username })
+})
+app.get('/floor-layout', async (req, res) => {
+  requireRole(req, tableRoles)
+  res.json(await readFloor())
+})
+app.post('/floor-layout', async (req, res) => {
+  requireRole(req, ['manager'])
+  const { positions, version } = req.body || {}
+  let validated
+  try {
+    validated = readFloorLayout(positions)
+  } catch (error) {
+    throw problem(400, error.message)
+  }
+  const updated = await update(floorLayoutId, (state) => {
+    if (state.version !== version)
+      throw problem(409, 'Someone saved a newer floor layout. Reopen the editor to use it.')
+    state.positions = validated
+  })
+  res.json(floorProjection(updated))
 })
 app.get('/menu', async (req, res) => res.json(await readMenu(req.account?.role === 'manager')))
 app.post('/menu', async (req, res) => {

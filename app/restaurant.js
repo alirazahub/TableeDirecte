@@ -17,6 +17,7 @@ export default function Restaurant({ table, tableKey }) {
   const {
     guest,
     tables,
+    floorLayout,
     unavailable,
     dishes,
     menuVersion,
@@ -191,6 +192,12 @@ export default function Restaurant({ table, tableKey }) {
       const data = await restaurantApi('menu', { body: { id, available } })
       applyLiveMessage({ type: 'menu', ...data })
     })
+  }
+
+  async function saveFloorLayout(body) {
+    const layout = await restaurantApi('floor-layout', { body })
+    dispatch({ type: 'floor-layout', layout })
+    setToast('Floor layout saved.')
   }
 
   async function saveMenu(body) {
@@ -383,6 +390,8 @@ export default function Restaurant({ table, tableKey }) {
               view,
               setView,
               tables,
+              floorLayout,
+              saveFloorLayout,
               busy,
               perform,
               money,
