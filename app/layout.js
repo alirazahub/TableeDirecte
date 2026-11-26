@@ -1,3 +1,14 @@
 import './style.css'
-export const metadata = {title:'Tablée Directe | QR Table Ordering',description:'Browse the menu and order from your table.'}
-export default function Layout({children}) { return <html lang="en"><body>{children}</body></html> }
+import './guest.css'
+import './staff.css'
+export const metadata = {
+  title: 'Tablée Directe | QR Table Ordering',
+  description: 'Browse the menu and order from your table.',
+}
+export default function Layout({ children }) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  )
+}

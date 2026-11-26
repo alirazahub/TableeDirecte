@@ -83,3 +83,7 @@ The command requires a database name ending in `Demo` and inserts only missing f
 | `demo-guest` | `Tablee-Demo-2026!` | Sign in through **Customer account**, open **My orders**, and follow a seeded delivery. Use Table 12 for a fresh QR order, split checkout, and review. |
 
 For live updates, open a guest view and a staff view in separate browser profiles. Try Table 07 and advance its ticket in the kitchen. MongoDB and its change stream provide durable cross-instance updates. The public in-memory demo can reset between requests or deployments.
+
+## Frontend architecture
+
+`app/restaurant.js` coordinates sessions, user actions, and routing between guest and staff screens. Guest browsing, staff operations, and dialogs live in dedicated components. `app/restaurant-api.js` handles HTTP requests made for user actions. `app/live-client.js` owns WebSocket connection and reconnect behavior, and `app/restaurant-state.js` applies server snapshots and record updates. HTTP action responses use the same reducer as socket updates so older record versions cannot overwrite newer ones.
