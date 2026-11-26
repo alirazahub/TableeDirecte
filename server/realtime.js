@@ -2,7 +2,6 @@ import { createHmac } from 'node:crypto'
 import { demo, equal, sessionFromCookie, verifyTracking } from './auth.js'
 import { changes, startChangeFeed } from './changes.js'
 import {
-  availability,
   configured,
   deliveryFor,
   deliveryPublic,
@@ -10,6 +9,8 @@ import {
   empty,
   guestData,
   lookup,
+  menuProjection,
+  readMenu,
   staffDeliveries,
   staffTable,
   staffTables,
@@ -62,7 +63,8 @@ function subscribe({ cookie, scope, send, terminate }) {
   let initialized = false
 
   function publish(id, record) {
-    if (id === 'menu-settings' && menuScope) send({ type: 'menu', unavailable: record?.unavailable || [] })
+    if (id === 'menu-settings' && menuScope)
+      send({ type: 'menu', ...menuProjection(record, account?.role === 'manager') })
     if (guest && id === table) send({ type: 'guest', table: guestData(record || empty(id)) })
     if (staffTableScope && tableIds.includes(id))
       send({ type: 'table', table: staffTable(record || empty(id), account.role) })
@@ -109,11 +111,11 @@ function subscribe({ cookie, scope, send, terminate }) {
         guest ? lookup(table) : null,
         staffTableScope ? staffTables(account.role) : null,
         staffDeliveryScope ? staffDeliveries(account) : null,
-        menuScope ? availability() : null,
+        menuScope ? readMenu(account?.role === 'manager') : null,
         deliveryId ? lookup(deliveryId) : null,
       ]),
     )
-    .then(([record, tables, deliveries, unavailable, tracked]) => {
+    .then(([record, tables, deliveries, catalog, tracked]) => {
       if (closed) return
       for (const order of deliveries?.orders || []) visibleDeliveries.add(order.id)
       send({
@@ -121,7 +123,7 @@ function subscribe({ cookie, scope, send, terminate }) {
         guest: record ? guestData(record) : undefined,
         tables: tables || undefined,
         deliveries: deliveries || undefined,
-        unavailable: unavailable || undefined,
+        catalog: catalog || undefined,
         tracking: deliveryId ? (tracked?.id ? deliveryPublic(tracked) : null) : undefined,
         message:
           !scope.staff && !guest && !deliveryId ? 'Scan the QR code on your table to order.' : undefined,

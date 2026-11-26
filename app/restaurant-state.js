@@ -1,9 +1,12 @@
+import { menu } from '../lib/menu.js'
 import { notificationEvents } from './notification-events.js'
 
 export const initialRestaurantState = {
   guest: null,
   tables: [],
   unavailable: [],
+  dishes: menu,
+  menuVersion: -1,
   deliveries: [],
   drivers: [],
   tracking: null,
@@ -18,17 +21,21 @@ function newer(current, incoming) {
 
 function reduceData(state, message) {
   switch (message.type) {
-    case 'snapshot':
+    case 'snapshot': {
+      const catalog = message.catalog?.version >= state.menuVersion ? message.catalog : null
       return {
         ...state,
         guest: message.guest || state.guest,
         tables: message.tables || state.tables,
-        unavailable: message.unavailable || state.unavailable,
+        unavailable: catalog?.unavailable || message.unavailable || state.unavailable,
+        dishes: catalog?.dishes || state.dishes,
+        menuVersion: catalog?.version ?? state.menuVersion,
         deliveries: message.deliveries?.orders || state.deliveries,
         drivers: message.deliveries?.drivers || state.drivers,
         tracking: Object.hasOwn(message, 'tracking') ? message.tracking : state.tracking,
         connection: message.message || '',
       }
+    }
     case 'guest':
       return { ...state, guest: newer(state.guest, message.table) }
     case 'table':
@@ -39,7 +46,14 @@ function reduceData(state, message) {
         ),
       }
     case 'menu':
-      return { ...state, unavailable: message.unavailable }
+      return Number.isInteger(message.version) && message.version < state.menuVersion
+        ? state
+        : {
+            ...state,
+            unavailable: message.unavailable,
+            dishes: message.dishes || state.dishes,
+            menuVersion: message.version ?? state.menuVersion,
+          }
     case 'tracking': {
       const order = message.order
       return {
@@ -63,7 +77,13 @@ function reduceData(state, message) {
         ),
       }
     case 'clear-staff':
-      return { ...state, tables: [], deliveries: [], drivers: [] }
+      return {
+        ...state,
+        tables: [],
+        deliveries: [],
+        drivers: [],
+        dishes: state.dishes.filter((dish) => !dish.archived),
+      }
     case 'error':
       return { ...state, connection: message.message }
     default:
@@ -85,7 +105,7 @@ export function restaurantReducer(state, message) {
     }
   }
   const next = reduceData(state, message)
-  if (!message.notify) return next
+  if (!message.notify || next === state) return next
   const events = notificationEvents(state, message)
   if (!events.length) return next
   const newItems = events.map((event, index) => ({

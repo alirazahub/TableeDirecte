@@ -2,6 +2,8 @@
 
 import { Clock3, MapPin, Truck } from 'lucide-react'
 
+import OrderLineOptions from './order-line-options'
+
 const timeline = ['Placed', 'Cooking', 'Ready', 'Out for delivery', 'Delivered']
 const time = (value) =>
   new Intl.DateTimeFormat('fr-FR', { timeStyle: 'short', timeZone: 'Europe/Paris' }).format(value)
@@ -101,8 +103,9 @@ export default function DeliveryWorkspace({ role, orders, drivers, perform, mone
               )}
               <ul>
                 {order.items.map((item) => (
-                  <li key={item.id}>
+                  <li key={item.lineId || item.id}>
                     {item.quantity}× {item.name}
+                    <OrderLineOptions item={item} />
                   </li>
                 ))}
               </ul>

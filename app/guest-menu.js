@@ -15,9 +15,11 @@ import {
   Truck,
   Wifi,
   X,
+  Utensils,
 } from 'lucide-react'
-import { categories, menu } from '../lib/menu'
+import { categories as defaultCategories } from '../lib/menu'
 import { lineTotal, tableBalance } from '../lib/operations'
+import OrderLineOptions from './order-line-options'
 import { money } from './restaurant-api'
 
 function DishCard({ item, soldOut, count, onAdd, onDetails }) {
@@ -25,7 +27,13 @@ function DishCard({ item, soldOut, count, onAdd, onDetails }) {
   return (
     <article className={soldOut ? 'dish sold-out' : 'dish'}>
       <button className="dish-photo" aria-label={'View ' + item.name} onClick={onDetails}>
-        <img src={item.image} alt="" loading="lazy" />
+        {item.image ? (
+          <img src={item.image} alt="" loading="lazy" />
+        ) : (
+          <span className="menu-image-placeholder">
+            <Utensils size={25} />
+          </span>
+        )}
         {tag && <span className="dish-tag">{tag}</span>}
       </button>
       <div className="dish-info">
@@ -37,9 +45,9 @@ function DishCard({ item, soldOut, count, onAdd, onDetails }) {
           <strong>{money(item.price)}</strong>
           <button
             className="add"
-            aria-label={'Add ' + item.name}
+            aria-label={(item.groups?.length ? 'Customize ' : 'Add ') + item.name}
             onClick={onAdd}
-            disabled={soldOut || count >= 20}
+            disabled={soldOut || (!item.groups?.length && count >= 20)}
           >
             {count > 0 && <span>{count}</span>}
             <Plus size={18} />
@@ -62,6 +70,7 @@ function OrderSummary({
   busy,
   onOrder,
   onDelivery,
+  onEditLine,
 }) {
   return (
     <aside className="cart" id="order-cart" aria-labelledby="cart-title">
@@ -80,20 +89,32 @@ function OrderSummary({
       {lines.length > 0 ? (
         <ul className="cart-lines">
           {lines.map((item) => (
-            <li key={item.id}>
-              <strong>{item.name}</strong>
+            <li key={item.key}>
+              <div>
+                <strong>{item.name}</strong>
+                <OrderLineOptions item={item} />
+                {item.invalid && <small className="line-warning">Review this item</small>}
+              </div>
               <span>{money(item.quantity * item.price)}</span>
               <div className="stepper">
-                <button aria-label={'Remove one ' + item.name} onClick={() => quantity(item.id, -1)}>
+                <button aria-label={'Remove one ' + item.name} onClick={() => quantity(item.key, -1)}>
                   <Minus size={14} />
                 </button>
                 <span>{item.quantity}</span>
                 <button
                   aria-label={'Add one ' + item.name}
-                  disabled={item.quantity >= 20}
-                  onClick={() => quantity(item.id, 1)}
+                  disabled={item.invalid || item.quantity >= 20}
+                  onClick={() => quantity(item.key, 1)}
                 >
                   <Plus size={14} />
+                </button>
+                <button
+                  className="cart-edit"
+                  disabled={item.editable === false}
+                  onClick={() => onEditLine(item)}
+                  aria-label={'Edit ' + item.name}
+                >
+                  Edit
                 </button>
               </div>
             </li>
@@ -117,7 +138,9 @@ function OrderSummary({
           />
         </label>
       )}
-      {unavailableInCart && <p className="cart-warning">Remove sold-out items to place your order.</p>}
+      {unavailableInCart && (
+        <p className="cart-warning">Review or remove unavailable items and choices before ordering.</p>
+      )}
       <div className="cart-bottom">
         <div>
           <span>Subtotal</span>
@@ -154,7 +177,7 @@ function OrderSummary({
 export default function GuestMenu({
   table,
   guest,
-  cart,
+  dishes: catalog,
   lines,
   note,
   setNote,
@@ -165,14 +188,23 @@ export default function GuestMenu({
   busy,
   tracking,
   onOrder,
+  onQuickAdd,
+  onEditLine,
 }) {
+  const categories = [
+    ...new Set([
+      ...defaultCategories,
+      ...catalog.filter((dish) => !dish.archived).map((dish) => dish.category),
+    ]),
+  ]
   const [category, setCategory] = useState(categories[0])
   const [search, setSearch] = useState('')
   const [diet, setDiet] = useState('')
   const count = lines.reduce((sum, item) => sum + item.quantity, 0)
   const query = search.trim().toLowerCase()
-  const dishes = menu.filter(
+  const dishes = catalog.filter(
     (item) =>
+      !item.archived &&
       (category === categories[0] || item.category === category) &&
       (!diet || item.diet === diet || (diet === 'Vegetarian' && item.diet === 'Vegan')) &&
       (item.name + ' ' + item.description).toLowerCase().includes(query),
@@ -281,8 +313,10 @@ export default function GuestMenu({
                   key={item.id}
                   item={item}
                   soldOut={unavailable.includes(item.id)}
-                  count={cart[item.id] || 0}
-                  onAdd={() => quantity(item.id, 1)}
+                  count={lines
+                    .filter((line) => line.id === item.id)
+                    .reduce((sum, line) => sum + line.quantity, 0)}
+                  onAdd={() => onQuickAdd(item)}
                   onDetails={() => openDish(item)}
                 />
               ))}
@@ -305,7 +339,8 @@ export default function GuestMenu({
         </section>
         <OrderSummary
           {...{ table, lines, count, note, setNote, busy, quantity, guest, onOrder }}
-          unavailableInCart={lines.some((item) => unavailable.includes(item.id))}
+          unavailableInCart={lines.some((item) => item.invalid)}
+          onEditLine={onEditLine}
           onDelivery={() => openPanel('delivery')}
         />
       </div>

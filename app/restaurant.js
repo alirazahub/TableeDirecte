@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { ChefHat, CircleUserRound, LayoutGrid, UtensilsCrossed, X } from 'lucide-react'
-import { menu } from '../lib/menu'
+import { lineKey, quoteDish } from '../lib/catalog'
 import { tableBalance as balance } from '../lib/operations'
 import { roles } from '../lib/roles'
 import GuestMenu from './guest-menu'
@@ -18,6 +18,8 @@ export default function Restaurant({ table, tableKey }) {
     guest,
     tables,
     unavailable,
+    dishes,
+    menuVersion,
     deliveries: deliveryOrders,
     drivers,
     tracking: tracked,
@@ -27,7 +29,8 @@ export default function Restaurant({ table, tableKey }) {
   const [note, setNote] = useState('')
   const [cart, setCart] = useState({})
   const [panel, setPanel] = useState(null)
-  const [dish, setDish] = useState(null)
+  const [selectedDish, setSelectedDish] = useState(null)
+  const [editingLine, setEditingLine] = useState(null)
   const [account, setAccount] = useState(null)
   const [customer, setCustomer] = useState(null)
   const [customerOrders, setCustomerOrders] = useState([])
@@ -39,9 +42,26 @@ export default function Restaurant({ table, tableKey }) {
   const [busy, setBusy] = useState(false)
   const [qr, setQr] = useState(null)
   const [payTable, setPayTable] = useState(null)
-  const lines = menu.filter((item) => cart[item.id]).map((item) => ({ ...item, quantity: cart[item.id] }))
+  const dish = selectedDish ? dishes.find((item) => item.id === selectedDish) : null
+  const lines = Object.values(cart).map((line) => {
+    const current = dishes.find((item) => item.id === line.id && !item.archived)
+    try {
+      if (!current || unavailable.includes(line.id)) throw new Error()
+      return { ...line, name: current.name, ...quoteDish(current, line.selections), invalid: false }
+    } catch {
+      return { ...line, invalid: true, editable: Boolean(current) }
+    }
+  })
   const tableLabel = String(table).padStart(2, '0')
-  const unavailableInCart = lines.some((item) => unavailable.includes(item.id))
+  const unavailableInCart = lines.some((item) => item.invalid)
+  const orderItems = () =>
+    lines.map(({ id, quantity, selections, note, price }) => ({
+      id,
+      quantity,
+      selections,
+      note,
+      expectedUnitPrice: price,
+    }))
   const actionPending = useRef(false)
   const bill = (payTable && tables.find((item) => item._id === payTable._id)) || guest
   const staffMode = view !== 'menu' && Boolean(account)
@@ -118,9 +138,39 @@ export default function Restaurant({ table, tableKey }) {
     }
   }
 
-  function quantity(id, change) {
-    setCart((previous) => ({ ...previous, [id]: Math.min(20, Math.max(0, (previous[id] || 0) + change)) }))
+  function quantity(key, change) {
+    setCart((previous) => {
+      const item = previous[key]
+      if (!item) return previous
+      const count = Math.min(20, item.quantity + change)
+      if (count > 0) return { ...previous, [key]: { ...item, quantity: count } }
+      const copy = { ...previous }
+      delete copy[key]
+      return copy
+    })
   }
+
+  function addConfigured(item, selections = {}, rawNote = '', amount = 1, replace = null) {
+    const note = rawNote.trim()
+    const quote = quoteDish(item, selections)
+    const key = lineKey(item.id, selections, note)
+    setCart((previous) => {
+      const current = { ...previous }
+      if (replace) delete current[replace.key]
+      const quantity = Math.min(20, (current[key]?.quantity || 0) + amount)
+      return {
+        ...current,
+        [key]: { id: item.id, key, name: item.name, selections, note, quantity, ...quote },
+      }
+    })
+  }
+
+  function openDish(item, line = null) {
+    setSelectedDish(item.id)
+    setEditingLine(line)
+    openPanel('dish')
+  }
+
   function perform(body, message, id = table, after) {
     return runAction(async () => {
       const result = await restaurantApi('tables/' + id, { tableKey: staffMode ? undefined : tableKey, body })
@@ -139,8 +189,14 @@ export default function Restaurant({ table, tableKey }) {
   function toggleDish(id, available) {
     return runAction(async () => {
       const data = await restaurantApi('menu', { body: { id, available } })
-      applyLiveMessage({ type: 'menu', unavailable: data.unavailable })
+      applyLiveMessage({ type: 'menu', ...data })
     })
+  }
+
+  async function saveMenu(body) {
+    const data = await restaurantApi('menu', { body })
+    applyLiveMessage({ type: 'menu', ...data })
+    setToast(body.action === 'save' ? 'Dish saved.' : body.archived ? 'Dish archived.' : 'Dish restored.')
   }
 
   function signIn(event) {
@@ -213,7 +269,7 @@ export default function Restaurant({ table, tableKey }) {
     return runAction(async () => {
       const data = await restaurantApi('deliveries', {
         body: {
-          items: lines.map(({ id, quantity }) => ({ id, quantity })),
+          items: orderItems(),
           note,
           recipient: fields.get('recipient'),
           address: fields.get('address'),
@@ -266,7 +322,7 @@ export default function Restaurant({ table, tableKey }) {
   }
 
   function placeTableOrder() {
-    const items = lines.map(({ id, quantity }) => ({ id, quantity }))
+    const items = orderItems()
     perform({ action: 'order', note, items }, 'Order sent to staff.', table, () => {
       setCart({})
       setNote('')
@@ -333,6 +389,9 @@ export default function Restaurant({ table, tableKey }) {
               showQr,
               unavailable,
               toggleDish,
+              dishes,
+              menuVersion,
+              saveMenu,
               account,
               live,
               deliveryOrders,
@@ -353,12 +412,25 @@ export default function Restaurant({ table, tableKey }) {
           />
         ) : (
           <GuestMenu
-            {...{ guest, cart, lines, note, setNote, unavailable, quantity, openPanel, busy, tracking }}
+            {...{
+              guest,
+              dishes,
+              lines,
+              note,
+              setNote,
+              unavailable,
+              quantity,
+              openPanel,
+              busy,
+              tracking,
+              openDish,
+            }}
             table={tableLabel}
             onOrder={placeTableOrder}
-            openDish={(item) => {
-              setDish(item)
-              openPanel('dish')
+            onQuickAdd={(item) => (item.groups?.length ? openDish(item) : addConfigured(item))}
+            onEditLine={(line) => {
+              const item = dishes.find((dish) => dish.id === line.id && !dish.archived)
+              if (item) openDish(item, line)
             }}
           />
         )}
@@ -391,7 +463,12 @@ export default function Restaurant({ table, tableKey }) {
             setPanel,
             dish,
             unavailable,
-            quantity,
+            editingLine,
+            menuVersion,
+            onCustomize: (item, selections, note, quantity) => {
+              addConfigured(item, selections, note, quantity, editingLine)
+              setPanel(null)
+            },
             customer,
             customerOrders,
             customerAuth,

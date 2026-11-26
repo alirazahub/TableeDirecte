@@ -38,7 +38,7 @@ Only server-approved roles can mutate tickets, and kitchen responses exclude del
 
 - **Floor** shows table occupancy, outstanding balances, waiter requests, QR codes, and payment recording. Staff can cancel new orders before payment.
 - **Kitchen** shows new, cooking, and ready tickets, including guest notes and elapsed time.
-- **Menu** lets staff mark dishes sold out and restore availability.
+- **Menu** lets kitchen staff mark dishes sold out. Managers can also create and edit dishes, categories, prices, and choice groups.
 - **Reports** shows closed visits, payments, tips, and ratings by Paris date, with a CSV of closed visits.
 
 The sample menu uses euros. For an existing persistent installation that stored dollar amounts, use a fresh database or migrate the records before upgrading. Update the sample dish details and confirm the allergen information against actual recipes before using the menu in service.
@@ -91,3 +91,9 @@ For live updates, open a guest view and a staff view in separate browser profile
 ### Live notifications
 
 The bell opens the current table or staff account’s recent notifications. Use its sound control to mute or enable the chime. Browsers allow sound after an initial click or key press. The initial socket snapshot quietly establishes the baseline, and versioned order updates appear once even if an HTTP action and its WebSocket update both arrive.
+
+### Menu editing and customizable meals
+
+Sign in as a manager and open **Menu management**. Choose **Add dish** or edit an existing dish. A choice group can require a single selection (minimum and maximum of one), offer optional extras (minimum zero), or allow several selections. Individual choices can add to the base price. Archive a dish to remove it from the guest menu, or restore it later. Kitchen accounts can change availability without editing dishes.
+
+The **Signature Burger Meal** is a guest example with a required side, drink, and size, plus optional extras. Guests can edit cart lines and add special instructions. The API validates choices and computes the price from the live catalog. Placed orders preserve their original option names and prices for tickets and bills. With MongoDB configured, menu changes persist and broadcast to other devices over WebSockets. The hosted in-memory demo keeps changes only within its function instance.

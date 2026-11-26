@@ -1,4 +1,3 @@
-import { menu } from '../lib/menu.js'
 import { serviceReasons } from '../lib/operations.js'
 import { money } from './restaurant-api.js'
 
@@ -105,7 +104,7 @@ export function notificationEvents(state, message) {
       return state.tracking?.id === message.order?.id ? deliveryEvents(state.tracking, message.order) : []
     case 'menu':
       if (!message.role) return []
-      return menu
+      return (message.dishes || state.dishes)
         .filter((dish) => state.unavailable.includes(dish.id) !== message.unavailable.includes(dish.id))
         .map((dish) => ({
           title: message.unavailable.includes(dish.id) ? 'Dish sold out' : 'Dish available again',

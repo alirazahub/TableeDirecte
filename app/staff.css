@@ -94,3 +94,18 @@
   .workspace-head { padding: 12px; }
   .workspace-sidebar .logout { padding-inline: 5px; }
 }
+
+.catalog-search { max-width: 430px; }
+.catalog .menu-admin-card { flex-wrap: wrap; }
+.catalog .menu-admin-card > .menu-image-placeholder { flex: none; width: 58px; height: 54px; border-radius: 7px; }
+.menu-admin-actions { display: flex; justify-content: flex-end; gap: 5px; flex: 0 1 auto !important; }
+.menu-admin-actions .icon-button { width: 34px; min-height: 34px; }
+.dish-editor .editor-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 10px; }
+.dish-editor .editor-modifiers { margin-top: 19px; }
+.dish-editor .editor-modifiers h3 { font-size: 17px; }
+.dish-editor .editor-modifiers p { margin-top: 4px; font-size: 14px; }
+.editor-group { margin: 14px 0 0; padding: 5px 10px 10px; border: 1px solid var(--line); border-radius: 10px; min-inline-size: 0; }
+.editor-group legend { padding-inline: 5px; font-size: 14px; font-weight: 700; }
+.editor-group-title { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: end; }
+.editor-choice { display: grid; grid-template-columns: minmax(0,1fr) minmax(70px,90px) auto; gap: 6px; align-items: end; }
+.editor-choice .icon-button, .editor-group-title .icon-button { width: 34px; min-height: 37px; }

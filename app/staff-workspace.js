@@ -19,7 +19,8 @@ import {
 } from 'lucide-react'
 import DeliveryWorkspace from './delivery-workspace'
 import { roles } from '../lib/roles'
-import { menu } from '../lib/menu'
+import MenuWorkspace from './menu-workspace'
+import OrderLineOptions from './order-line-options'
 import { orderSubtotal, paidTotal, parisDay, serviceReasons, tableBalance, tipTotal } from '../lib/operations'
 
 const views = [
@@ -103,8 +104,9 @@ function OrderTicket({ order, table, now, busy, perform, money, compact, payment
       </header>
       <ul>
         {order.items.map((item) => (
-          <li key={item.id}>
+          <li key={item.lineId || item.id}>
             <b>{item.quantity}×</b> {item.name}
+            <OrderLineOptions item={item} />
           </li>
         ))}
       </ul>
@@ -155,6 +157,9 @@ export default function StaffWorkspace({
   signOut,
   unavailable,
   toggleDish,
+  dishes,
+  menuVersion,
+  saveMenu,
   demo,
   account,
   live,
@@ -233,7 +238,7 @@ export default function StaffWorkspace({
                 onClick={() => setView(id)}
               >
                 <Icon size={18} />
-                <span>{label}</span>
+                <span>{id === 'catalog' && account.role === 'manager' ? 'Menu management' : label}</span>
               </button>
             ))}
         </nav>
@@ -244,7 +249,7 @@ export default function StaffWorkspace({
       <div className="workspace-main">
         <header className="workspace-head">
           <div>
-            <h1>{viewTitle}</h1>
+            <h1>{view === 'catalog' && account.role === 'manager' ? 'Menu management' : viewTitle}</h1>
             <p>{description}</p>
           </div>
           <div className="workspace-status">
@@ -461,33 +466,11 @@ export default function StaffWorkspace({
           </>
         )}
         {view === 'catalog' && (
-          <>
-            <div className="catalog">
-              {menu.map((dish) => {
-                const soldOut = unavailable.includes(dish.id)
-                return (
-                  <article key={dish.id}>
-                    <img src={dish.image} alt="" />
-                    <div>
-                      <h3>{dish.name}</h3>
-                      <p>
-                        {dish.category} · {money(dish.price)}
-                      </p>
-                    </div>
-                    <button
-                      role="switch"
-                      aria-label={dish.name + ' availability'}
-                      aria-checked={!soldOut}
-                      disabled={busy}
-                      onClick={() => toggleDish(dish.id, soldOut)}
-                    >
-                      {soldOut ? 'Sold out' : 'Available'}
-                    </button>
-                  </article>
-                )
-              })}
-            </div>
-          </>
+          <MenuWorkspace
+            role={account.role}
+            {...{ dishes, unavailable, busy, toggleDish, saveMenu }}
+            version={menuVersion}
+          />
         )}
         {view === 'reports' && (
           <>

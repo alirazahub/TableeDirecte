@@ -6,6 +6,8 @@ import { lineTotal as total, paidTotal, serviceReasons, tableBalance as balance 
 import { demoAccounts, demoCustomer, roles } from '../lib/roles'
 import { DeliveryProgress } from './delivery-workspace'
 import Dialog from './dialog'
+import DishCustomizer from './dish-customizer'
+import OrderLineOptions from './order-line-options'
 import { money } from './restaurant-api'
 
 export default function RestaurantDialog({
@@ -13,7 +15,9 @@ export default function RestaurantDialog({
   setPanel,
   dish,
   unavailable,
-  quantity,
+  menuVersion,
+  editingLine,
+  onCustomize,
   customer,
   customerOrders,
   customerAuth,
@@ -72,28 +76,21 @@ export default function RestaurantDialog({
 
   return (
     <Dialog label={labels[panel]} onClose={() => setPanel(null)}>
-      {panel === 'dish' && dish && (
-        <>
-          <img className="modal-food" src={dish.image} alt={dish.name} />
-          <h2>{dish.name}</h2>
-          <p>{dish.description}</p>
-          {dish.diet && <p className="diet-label">{dish.diet}</p>}
-          <p>
-            <strong>Sample allergen information</strong> · {dish.allergens}
-          </p>
-          <p className="muted">Please ask the team about cross-contact before ordering.</p>
-          <button
-            className="primary"
-            disabled={unavailable.includes(dish.id)}
-            onClick={() => {
-              quantity(dish.id, 1)
-              setPanel(null)
-            }}
-          >
-            {unavailable.includes(dish.id) ? 'Sold out' : 'Add to order · ' + money(dish.price)}
-          </button>
-        </>
-      )}
+      {panel === 'dish' &&
+        (dish && !dish.archived ? (
+          <DishCustomizer
+            key={dish.id + ':' + menuVersion + ':' + (editingLine?.key || '')}
+            dish={dish}
+            soldOut={unavailable.includes(dish.id)}
+            onAdd={onCustomize}
+            initial={editingLine}
+          />
+        ) : (
+          <>
+            <h2>Dish unavailable</h2>
+            <p>This dish was removed from the menu.</p>
+          </>
+        ))}
       {panel === 'customer' &&
         (customer ? (
           <>
@@ -391,9 +388,10 @@ export default function RestaurantDialog({
             .filter((order) => order.status !== 'Cancelled')
             .flatMap((order) =>
               order.items.map((item) => (
-                <div className="bill-line" key={order.id + item.id}>
+                <div className="bill-line" key={order.id + (item.lineId || item.id)}>
                   <span>
                     {item.quantity} × {item.name}
+                    <OrderLineOptions item={item} />
                   </span>
                   <strong>{money(item.price * item.quantity)}</strong>
                 </div>
