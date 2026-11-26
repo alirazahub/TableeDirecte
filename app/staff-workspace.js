@@ -19,6 +19,8 @@ import {
 } from 'lucide-react'
 import DeliveryWorkspace from './delivery-workspace'
 import { roles } from '../lib/roles'
+import { BillPrintActions, PrintButton } from './print-preview'
+import { closedVisitDocument, kitchenDocument } from './print-documents'
 import FloorMap from './floor-map'
 import MenuWorkspace from './menu-workspace'
 import OrderLineOptions from './order-line-options'
@@ -130,6 +132,7 @@ function OrderTicket({ order, table, now, busy, perform, money, compact, payment
           </button>
         )}
       </footer>
+      {!compact && <PrintButton label="Print kitchen ticket" build={() => kitchenDocument(order, table)} />}
       {compact && order.status === 'Placed' && payments.length === 0 && (
         <button
           className="text-danger"
@@ -388,6 +391,7 @@ export default function StaffWorkspace({
                       ★ {review.rating}/5 {review.comment}
                     </p>
                   ))}
+                  <BillPrintActions visit={table} />
                   <div className="table-actions">
                     {tableBalance(table) > 0 && (
                       <button className="primary" onClick={() => openPayment(table)}>
@@ -574,6 +578,7 @@ export default function StaffWorkspace({
                     <th>Collected</th>
                     <th>Tips</th>
                     <th>Rating</th>
+                    <th>Print</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -586,11 +591,14 @@ export default function StaffWorkspace({
                       <td>{money(visit.collected)}</td>
                       <td>{money(visit.tips)}</td>
                       <td>{visit.rating || '—'}</td>
+                      <td>
+                        <PrintButton label="Print summary" build={() => closedVisitDocument(visit)} />
+                      </td>
                     </tr>
                   ))}
                   {!visits.length && (
                     <tr>
-                      <td colSpan="7">No closed visits for this date.</td>
+                      <td colSpan="8">No closed visits for this date.</td>
                     </tr>
                   )}
                 </tbody>

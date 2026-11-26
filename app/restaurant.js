@@ -43,6 +43,7 @@ export default function Restaurant({ table, tableKey }) {
   const [busy, setBusy] = useState(false)
   const [qr, setQr] = useState(null)
   const [payTable, setPayTable] = useState(null)
+  const [paymentReceipt, setPaymentReceipt] = useState(null)
   const dish = selectedDish ? dishes.find((item) => item.id === selectedDish) : null
   const lines = Object.values(cart).map((line) => {
     const current = dishes.find((item) => item.id === line.id && !item.archived)
@@ -183,7 +184,7 @@ export default function Restaurant({ table, tableKey }) {
       ) {
         setToast(result.notice || message)
       }
-      after?.()
+      after?.(result.table)
     })
   }
 
@@ -309,9 +310,13 @@ export default function Restaurant({ table, tableKey }) {
       },
       'Payment recorded.',
       bill._id,
-      () => {
-        setPanel(staffMode ? null : 'bill')
+      (visit) => {
         setPayTable(null)
+        const payment = visit.payments.at(-1)
+        if (payment) {
+          setPaymentReceipt({ visit, payment })
+          setPanel('payment-receipt')
+        } else setPanel(staffMode ? null : 'bill')
       },
     )
   }
@@ -497,6 +502,7 @@ export default function Restaurant({ table, tableKey }) {
             toast,
             guest,
             checkout,
+            paymentReceipt,
             staffMode,
             bill,
             qr,

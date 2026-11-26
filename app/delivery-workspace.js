@@ -2,6 +2,8 @@
 
 import { Clock3, MapPin, Truck } from 'lucide-react'
 
+import { PrintButton } from './print-preview'
+import { deliveryDocument } from './print-documents'
 import OrderLineOptions from './order-line-options'
 
 const timeline = ['Placed', 'Cooking', 'Ready', 'Out for delivery', 'Delivered']
@@ -111,6 +113,7 @@ export default function DeliveryWorkspace({ role, orders, drivers, perform, mone
               </ul>
               {order.note && <p className="ticket-note">{order.note}</p>}
               <DeliveryProgress order={order} money={money} />
+              <PrintButton label="Print delivery slip" build={() => deliveryDocument(order, true)} />
               {drivers.length > 0 && timeline.indexOf(order.status) < 3 && order.status !== 'Cancelled' && (
                 <label className="driver-select">
                   Assigned driver

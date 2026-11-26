@@ -7,6 +7,8 @@ import { demoAccounts, demoCustomer, roles } from '../lib/roles'
 import { DeliveryProgress } from './delivery-workspace'
 import Dialog from './dialog'
 import DishCustomizer from './dish-customizer'
+import { BillPrintActions, PrintButton } from './print-preview'
+import { deliveryDocument, paymentDocument } from './print-documents'
 import OrderLineOptions from './order-line-options'
 import { money } from './restaurant-api'
 
@@ -37,6 +39,7 @@ export default function RestaurantDialog({
   toast,
   guest,
   checkout,
+  paymentReceipt,
   staffMode,
   bill,
   qr,
@@ -61,6 +64,7 @@ export default function RestaurantDialog({
     qr: 'Table QR code',
     bill: 'Your bill',
     pay: 'Payment',
+    'payment-receipt': 'Payment recorded',
     review: 'Leave a review',
   }
 
@@ -247,7 +251,10 @@ export default function RestaurantDialog({
         <>
           <h2>Track your delivery</h2>
           {tracked ? (
-            <DeliveryProgress order={tracked} money={money} />
+            <>
+              <DeliveryProgress order={tracked} money={money} />
+              <PrintButton label="Print delivery receipt" build={() => deliveryDocument(tracked)} />
+            </>
           ) : (
             <p>Waiting for delivery details.</p>
           )}
@@ -401,6 +408,7 @@ export default function RestaurantDialog({
             <strong>Remaining balance</strong>
             <strong>{money(balance(guest))}</strong>
           </div>
+          <BillPrintActions visit={guest} />
           {balance(guest) > 0 && (
             <button
               className="primary"
@@ -484,7 +492,23 @@ export default function RestaurantDialog({
           <button className="primary" disabled={busy}>
             {staffMode ? 'Record payment' : 'Confirm demo payment'}
           </button>
+          <BillPrintActions visit={bill} />
         </form>
+      )}
+      {panel === 'payment-receipt' && paymentReceipt && (
+        <>
+          <h2>Payment recorded</h2>
+          <p>{money(paymentReceipt.payment.amount + paymentReceipt.payment.tip)} received.</p>
+          <div className="bill-print-actions">
+            <PrintButton
+              label="Print payment receipt"
+              build={() => paymentDocument(paymentReceipt.visit, paymentReceipt.payment)}
+            />
+            <button type="button" onClick={() => setPanel(staffMode ? null : 'bill')}>
+              {staffMode ? 'Back to floor' : 'Back to bill'}
+            </button>
+          </div>
+        </>
       )}
       {panel === 'review' && (
         <form

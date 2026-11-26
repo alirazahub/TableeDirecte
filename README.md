@@ -103,3 +103,9 @@ The **Signature Burger Meal** is a guest example with a required side, drink, an
 Managers can open **Floor plan → Design layout** to expand the room up to 64 columns by 48 rows and add up to 120 numbered tables. Drag a table to move it and drag its corner handle to resize it. Position and size fields are also available. Choose a rectangle, rounded rectangle, or oval, or use **Draw custom shape** to add up to 24 corners and move them before saving. Each table has a label and seat count. New tables get their own table card and downloadable QR code. Save publishes the layout to floor, reception, and kitchen staff over the existing WebSocket connection. Floor and reception staff can select a table to jump to its card. Kitchen staff can expand the map and select a table to filter its tickets.
 
 Layouts are stored in MongoDB independently of service records and QR links. A 12-table default grid is shown until the first save. Layouts saved before canvas resizing keep their original dimensions. Saved layouts reject overlap, out-of-bounds positions, and edits based on an older version.
+
+### Printable bills and receipts
+
+From **View bill** or a staff table card, select **Print bill** for the itemized balance or expand **Payment receipts** to print an individual payment. When a payment is recorded, the confirmation offers an immediate print option. Delivery tracking offers an order receipt and staff dispatch offers a delivery slip. Delivery documents identify payment on delivery without confirming collection. Staff can also print kitchen tickets and closed-visit summaries from Reports.
+
+The preview offers a standard layout and a narrow 80 mm format. **Print / save PDF** opens the browser’s print dialog. For thermal paper, select the matching paper size in the printer settings.

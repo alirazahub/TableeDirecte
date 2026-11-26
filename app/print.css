@@ -1,0 +1,50 @@
+.print-modal { width: min(648px, calc(100vw - 28px)); }
+.print-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding-right: 34px; margin-bottom: 13px; }
+.print-toolbar label { width: min(145px, 100%); margin: 0; }
+.print-toolbar .primary { width: auto; margin: 0; }
+.print-document { background: white; color: #161616; border: 1px solid #ddd; border-radius: 8px; padding: 18px; margin-inline: auto; }
+.print-thermal .print-document { max-width: 76mm; font-size: 13px; padding: 9px; }
+.print-document header { margin-bottom: 12px; }
+.modal .print-document .print-brand { margin: 0 0 4px; color: #363636; font-size: .9em; font-weight: 700; }
+.modal .print-document h2 { font: 700 1.5em/1.2 system-ui, sans-serif; padding: 0; }
+.print-details, .print-totals { display: grid; gap: 6px; margin: 0 0 12px; font-size: .9em; }
+.print-details div, .print-totals div { display: flex; justify-content: space-between; gap: 10px; }
+.print-document dt { color: #4d4d4d; }
+.print-document dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.print-items { width: 100%; border-collapse: collapse; text-align: left; margin-bottom: 12px; font-size: .9em; }
+.print-items th, .print-items td { padding: 5px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
+.print-items td:first-child { width: 25px; }
+.print-items td:last-child:not(:nth-child(2)), .print-items th:last-child:not(:nth-child(2)) { white-space: nowrap; text-align: right; }
+.print-items td span { display: block; font-size: .92em; color: #4d4d4d; overflow-wrap: anywhere; }
+.print-totals div[data-emphasis="true"] { border-top: 1px solid #444; padding-top: 6px; font-weight: 700; }
+.modal .print-footer { color: #383838; font-size: .85em; margin-top: 8px; white-space: pre-wrap; }
+.bill-print-actions { display: grid; gap: 7px; margin-block: 9px; }
+.payment-prints summary { cursor: pointer; font-size: 14px; font-weight: 600; }
+.payment-prints > div { display: grid; gap: 5px; margin-top: 5px; }
+
+@media print {
+  @page { margin: 7mm; }
+  html, body:has(.print-modal[open]) { background: #fff !important; overflow: visible !important; }
+  body:has(.print-modal[open]) > :not(.print-modal[open]) { display: none !important; }
+  body > .print-modal[open] {
+    display: block !important;
+    position: static;
+    inset: auto;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    color: #000;
+    background: #fff;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  body:has(.print-modal[open]) dialog::backdrop, .print-modal .close, .print-toolbar { display: none !important; }
+  .print-document, .print-thermal .print-document { border: 0; padding: 0; border-radius: 0; }
+  .print-thermal .print-document { max-width: 66mm; }
+  .print-document thead { display: table-header-group; }
+  .print-document tr, .print-totals div, .print-details div { break-inside: avoid; }
+}
